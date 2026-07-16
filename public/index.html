@@ -88,7 +88,30 @@
 
         <!-- Real Google Sign-In Button Target -->
         <div class="google-auth-container">
-          <div id="google-signin-btn"></div>
+          <!-- Real Google Button (Rendered by GSI SDK when Client ID is set) -->
+          <div id="google-signin-btn" class="hidden"></div>
+          
+          <!-- Mock/Placeholder Google Button shown when Client ID is default -->
+          <button id="google-signin-mock-btn" class="btn google-mock-btn">
+            <svg class="google-logo-svg" viewBox="0 0 24 24" width="18" height="18">
+              <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.54 14.98 1 12 1 7.35 1 3.37 3.67 1.39 7.56l3.85 2.99c.9-2.7 3.42-4.51 6.76-4.51z"/>
+              <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.34H12v4.44h6.44c-.28 1.48-1.12 2.73-2.38 3.58l3.69 2.87c2.16-2 3.74-4.94 3.74-8.55z"/>
+              <path fill="#FBBC05" d="M5.24 14.56c-.23-.69-.36-1.43-.36-2.19s.13-1.5.36-2.19L1.39 7.18C.5 8.97 0 10.97 0 13s.5 4.03 1.39 5.82l3.85-3.26z"/>
+              <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.69-2.87c-1.02.68-2.33 1.09-3.96 1.09-3.34 0-5.86-1.81-6.87-4.51L1.59 16.8C3.57 20.69 7.55 23 12 23z"/>
+            </svg>
+            <span>Sign in with Google</span>
+          </button>
+        </div>
+
+        <!-- Google client activation warning dialogue -->
+        <div id="google-activation-warning" class="google-warning-card hidden">
+          <div class="warning-header">
+            <i data-lucide="alert-triangle"></i>
+            <h4>Google Client ID Needed</h4>
+          </div>
+          <p>To connect your real Google Account, enter your Google OAuth Web Client ID in the configuration settings above.</p>
+          <p>Otherwise, use the <strong>Developer Mock Login</strong> below to test TimeMaster's isolated workspaces immediately!</p>
+          <button id="close-warning-btn" class="btn btn-secondary btn-sm">Got it</button>
         </div>
 
         <!-- Mock Developer Sign-In Fallback -->

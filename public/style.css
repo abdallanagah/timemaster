@@ -2077,4 +2077,115 @@ body.light-theme .btn-expand-task:hover {
   color: #fca5a5 !important;
 }
 
+/* Mock Google Auth Button & Warnings */
+.google-mock-btn {
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  border: 1px solid #d1d5db !important;
+  padding: 10px 18px !important;
+  border-radius: 4px !important;
+  font-size: 0.9rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-family: Roboto, 'Segoe UI', Arial, sans-serif !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+  width: auto !important;
+  transition: all 0.15s ease !important;
+}
+
+.google-mock-btn:hover {
+  background: #f9fafb !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15) !important;
+}
+
+.google-logo-svg {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.google-warning-card {
+  background: rgba(239, 68, 68, 0.08) !important;
+  border: 1px solid rgba(239, 68, 68, 0.25) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 14px !important;
+  margin: 10px 0 !important;
+  color: #fecaca !important;
+  font-size: 0.85rem !important;
+  line-height: 1.45 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  text-align: left !important;
+}
+
+.google-warning-card .warning-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fca5a5;
+}
+
+.google-warning-card .warning-header h4 {
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.google-warning-card p {
+  margin: 0;
+}
+
+.google-warning-card strong {
+  color: #fff;
+}
+
+/* Local Authentication Overrides Inputs Alignment & Styling */
+.local-auth-card {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.5rem !important;
+  width: 100% !important;
+}
+
+.local-auth-card .input-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  width: 100% !important;
+  margin-bottom: 0.5rem !important;
+  text-align: left !important;
+}
+
+.local-auth-card label {
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  color: var(--text-muted) !important;
+  text-transform: uppercase !important;
+  display: block !important;
+  margin-bottom: 2px !important;
+}
+
+.local-auth-card input {
+  width: 100% !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 10px 14px !important;
+  color: #fff !important;
+  font-family: var(--font-sans) !important;
+  font-size: 0.9rem !important;
+  outline: none !important;
+  transition: var(--transition) !important;
+}
+
+.local-auth-card input:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2) !important;
+}
+
 

@@ -614,6 +614,33 @@ function initGoogleSignIn() {
     clientIdInput.value = clientID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com' ? '' : clientID;
   }
 
+  const realBtn = document.getElementById('google-signin-btn');
+  const mockBtn = document.getElementById('google-signin-mock-btn');
+  const warningCard = document.getElementById('google-activation-warning');
+  const closeWarningBtn = document.getElementById('close-warning-btn');
+
+  // Wire up warning card handlers
+  if (mockBtn && warningCard) {
+    mockBtn.onclick = () => {
+      warningCard.classList.remove('hidden');
+    };
+  }
+  if (closeWarningBtn && warningCard) {
+    closeWarningBtn.onclick = () => {
+      warningCard.classList.add('hidden');
+    };
+  }
+
+  // Toggle button visibility based on Client ID setting
+  const isDefaultId = clientID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+  if (isDefaultId) {
+    if (realBtn) realBtn.classList.add('hidden');
+    if (mockBtn) mockBtn.classList.remove('hidden');
+  } else {
+    if (realBtn) realBtn.classList.remove('hidden');
+    if (mockBtn) mockBtn.classList.add('hidden');
+  }
+
   if (typeof google === 'undefined') {
     console.warn("Google GSI client library not loaded yet, retrying in 1s...");
     setTimeout(initGoogleSignIn, 1000);
@@ -626,10 +653,9 @@ function initGoogleSignIn() {
       callback: handleCredentialResponse
     });
     
-    const btnContainer = document.getElementById("google-signin-btn");
-    if (btnContainer) {
+    if (realBtn) {
       google.accounts.id.renderButton(
-        btnContainer,
+        realBtn,
         { theme: "outline", size: "large", width: "240", text: "signin_with" }
       );
     }

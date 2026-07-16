@@ -1345,8 +1345,43 @@ body.light-theme .task-item:hover {
 body.light-theme .weapon-row,
 body.light-theme .value-row,
 body.light-theme .superpower-row {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(0, 0, 0, 0.03);
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+body.light-theme .weapon-row h4,
+body.light-theme .superpower-row h4,
+body.light-theme .value-row h4 {
+  color: #0f172a !important;
+}
+
+body.light-theme .weapon-row p,
+body.light-theme .superpower-row p,
+body.light-theme .value-row p {
+  color: #64748b !important;
+}
+
+body.light-theme .btn-activate {
+  background: transparent !important;
+  border: none !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+  font-size: 0.82rem !important;
+  padding: 4px 8px !important;
+  box-shadow: none !important;
+}
+
+body.light-theme .btn-activate:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-radius: 4px !important;
+  color: #000 !important;
+}
+
+body.light-theme .btn-activate:disabled {
+  color: #94a3b8 !important;
+  background: transparent !important;
 }
 
 body.light-theme .select-mini {

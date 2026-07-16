@@ -1194,6 +1194,112 @@ function addEmptyStateMessage(container, message) {
   }
 }
 
+// Helper methods for editing task name, details, and checklist items
+function updateTaskName(taskId, newName) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (task && newName.trim()) {
+    task.text = newName.trim();
+    saveState();
+    const taskEl = document.querySelector(`.task-item[data-id="${taskId}"]`);
+    if (taskEl) {
+      const textSpan = taskEl.querySelector('.task-text');
+      if (textSpan) textSpan.textContent = task.text;
+    }
+  }
+}
+
+function updateTaskDetails(taskId, detailsText) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (task) {
+    task.details = detailsText;
+    saveState();
+  }
+}
+
+function addSubtask(taskId, text) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (task && text.trim()) {
+    if (!task.subtasks) task.subtasks = [];
+    task.subtasks.push({
+      id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+      text: text.trim(),
+      completed: false
+    });
+    saveState();
+    renderSubtasksList(taskId);
+  }
+}
+
+function toggleSubtask(taskId, subtaskId) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (task && task.subtasks) {
+    const sub = task.subtasks.find(s => s.id === subtaskId);
+    if (sub) {
+      sub.completed = !sub.completed;
+      saveState();
+      renderSubtasksList(taskId);
+    }
+  }
+}
+
+function deleteSubtask(taskId, subtaskId) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (task && task.subtasks) {
+    task.subtasks = task.subtasks.filter(s => s.id !== subtaskId);
+    saveState();
+    renderSubtasksList(taskId);
+  }
+}
+
+function renderSubtasksList(taskId) {
+  const container = document.getElementById(`subtasks-container-${taskId}`);
+  if (!container) return;
+  
+  container.innerHTML = '';
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task || !task.subtasks || task.subtasks.length === 0) {
+    container.innerHTML = `<div class="text-muted font-mono" style="font-size: 0.72rem; padding: 4px 0;">No items on checklist.</div>`;
+    return;
+  }
+
+  task.subtasks.forEach(sub => {
+    const el = document.createElement('div');
+    el.className = `subtask-item ${sub.completed ? 'completed' : ''}`;
+    
+    const checkBtn = document.createElement('button');
+    checkBtn.className = 'subtask-checkbox-btn';
+    checkBtn.innerHTML = '<i data-lucide="check"></i>';
+    checkBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSubtask(taskId, sub.id);
+    });
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'subtask-text-span';
+    textSpan.textContent = sub.text;
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn-delete-subtask';
+    delBtn.innerHTML = '<i data-lucide="trash-2"></i>';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSubtask(taskId, sub.id);
+    });
+
+    el.appendChild(checkBtn);
+    el.appendChild(textSpan);
+    el.appendChild(delBtn);
+    container.appendChild(el);
+  });
+  
+  lucide.createIcons({
+    attrs: {
+      class: 'inline-icon'
+    },
+    name: ['check', 'trash-2']
+  });
+}
+
 // Create a Single Task Item DOM Structure
 function createTaskDOMElement(task) {
   const item = document.createElement('div');
@@ -1286,6 +1392,7 @@ function createTaskDOMElement(task) {
       expandBtn.classList.add('expanded');
       expandBtn.title = 'Collapse options';
       expandedTasks.add(task.id);
+      renderSubtasksList(task.id);
     } else {
       metaContainer.classList.add('hidden');
       expandBtn.classList.remove('expanded');
@@ -1304,6 +1411,74 @@ function createTaskDOMElement(task) {
   if (!isExpanded) {
     meta.classList.add('hidden');
   }
+
+  // 1. Task Name Edit Group
+  const nameEditGroup = document.createElement('div');
+  nameEditGroup.className = 'task-edit-name-group';
+  nameEditGroup.innerHTML = `
+    <label>Task Name</label>
+    <input type="text" class="task-edit-name-input" value="${task.text.replace(/"/g, '&quot;')}">
+  `;
+  const nameInput = nameEditGroup.querySelector('.task-edit-name-input');
+  nameInput.addEventListener('change', (e) => {
+    updateTaskName(task.id, e.target.value);
+  });
+  meta.appendChild(nameEditGroup);
+
+  // 2. Details & Checklist Grid Row
+  const gridRow = document.createElement('div');
+  gridRow.className = 'task-details-checklist-row';
+
+  // Notes Column
+  const notesCol = document.createElement('div');
+  notesCol.className = 'task-notes-col';
+  notesCol.innerHTML = `
+    <label>Notes & Description</label>
+    <textarea class="task-details-textarea" placeholder="Add task details/notes...">${task.details || ''}</textarea>
+  `;
+  const notesTextarea = notesCol.querySelector('.task-details-textarea');
+  notesTextarea.addEventListener('change', (e) => {
+    updateTaskDetails(task.id, e.target.value);
+  });
+  gridRow.appendChild(notesCol);
+
+  // Subtasks/Checklist Column
+  const subtasksCol = document.createElement('div');
+  subtasksCol.className = 'task-subtasks-col';
+  subtasksCol.innerHTML = `
+    <label>Checklist</label>
+    <div class="subtasks-container" id="subtasks-container-${task.id}"></div>
+    <div class="add-subtask-group">
+      <input type="text" class="add-subtask-input" placeholder="+ Add checklist item...">
+      <button class="btn-add-subtask" type="button"><i data-lucide="plus"></i></button>
+    </div>
+  `;
+  
+  const addSubtaskIn = subtasksCol.querySelector('.add-subtask-input');
+  const addSubtaskBtn = subtasksCol.querySelector('.btn-add-subtask');
+  
+  const triggerAdd = () => {
+    const text = addSubtaskIn.value.trim();
+    if (text) {
+      addSubtask(task.id, text);
+      addSubtaskIn.value = '';
+    }
+  };
+
+  addSubtaskBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    triggerAdd();
+  });
+  addSubtaskIn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.stopPropagation();
+      e.preventDefault();
+      triggerAdd();
+    }
+  });
+
+  gridRow.appendChild(subtasksCol);
+  meta.appendChild(gridRow);
 
   const tagsContainer = document.createElement('div');
   tagsContainer.className = 'task-tags';
@@ -1414,6 +1589,11 @@ function createTaskDOMElement(task) {
 
   meta.appendChild(actionsRow);
   item.appendChild(meta);
+
+  // Initialize checklist items rendering if expanded
+  if (isExpanded) {
+    setTimeout(() => renderSubtasksList(task.id), 0);
+  }
 
   return item;
 }

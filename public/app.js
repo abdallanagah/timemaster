@@ -139,40 +139,10 @@ async function initApp() {
 
   // Verify TimeMaster Authentication
   const loginOverlay = document.getElementById('login-overlay');
-  const loginForm = document.getElementById('login-form');
   const logoutBtn = document.getElementById('logout-btn');
-  const btnMockLogin = document.getElementById('btn-mock-login');
   
-  if (loginForm) loginForm.addEventListener('submit', handleLoginSubmit);
+  initAuthUI();
   if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
-  if (btnMockLogin) btnMockLogin.addEventListener('click', handleMockLogin);
-
-  // Toggle Google config form
-  const toggleConfigBtn = document.getElementById('toggle-config-btn');
-  const configFields = document.getElementById('config-fields');
-  if (toggleConfigBtn && configFields) {
-    toggleConfigBtn.addEventListener('click', () => {
-      configFields.classList.toggle('hidden');
-    });
-  }
-
-  const saveClientIdBtn = document.getElementById('save-client-id-btn');
-  const clientIdInput = document.getElementById('google-client-id-input');
-  if (saveClientIdBtn && clientIdInput) {
-    saveClientIdBtn.addEventListener('click', () => {
-      const id = clientIdInput.value.trim();
-      if (id) {
-        localStorage.setItem('timemaster-google-client-id', id);
-        alert("Google Client ID applied. Re-initializing Google Sign-in...");
-        initGoogleSignIn();
-      } else {
-        localStorage.removeItem('timemaster-google-client-id');
-        alert("Google Client ID cleared. Resetting to mock defaults.");
-        initGoogleSignIn();
-      }
-      configFields.classList.add('hidden');
-    });
-  }
 
   const token = sessionStorage.getItem('timemaster-token');
   if (token) {
@@ -180,13 +150,9 @@ async function initApp() {
       currentUser = { id: 'abdalla-mock', name: 'Abdalla Nagah', email: 'abdalla@example.com', avatar: '' };
     } else if (token === 'mock-guest') {
       currentUser = { id: 'guest-mock', name: 'Guest User', email: 'guest@example.com', avatar: '' };
-    } else if (token === 'auth-token-timemaster-2000') {
-      currentUser = { id: 'default', name: 'Abdalla (Local)', email: 'local@timemaster.local', avatar: '' };
-    } else {
-      const payload = parseJwt(token);
-      if (payload) {
-        currentUser = { id: payload.sub, name: payload.name, email: payload.email, avatar: payload.picture };
-      }
+    } else if (token.startsWith('auth-token-')) {
+      const username = token.replace('auth-token-', '');
+      currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
     }
   }
 
@@ -196,7 +162,6 @@ async function initApp() {
     await fetchState();
   } else {
     if (loginOverlay) loginOverlay.classList.remove('hidden');
-    initGoogleSignIn();
   }
 
   // Check if weapon or recharge is currently active from database
@@ -605,95 +570,194 @@ function playSound(type) {
   }
 }
 
-// Google & Multi-Tenant Authentication Controllers
-function initGoogleSignIn() {
-  const clientID = localStorage.getItem('timemaster-google-client-id') || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+// Traditional Auth Tab & Submit Controllers
+let activeAuthMode = 'login'; // 'login' or 'signup'
+
+function initAuthUI() {
+  const tabLoginBtn = document.getElementById('tab-login-btn');
+  const tabSignupBtn = document.getElementById('tab-signup-btn');
+  const authForm = document.getElementById('auth-form');
+  const btnMockLogin = document.getElementById('btn-mock-login');
   
-  const clientIdInput = document.getElementById('google-client-id-input');
-  if (clientIdInput) {
-    clientIdInput.value = clientID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com' ? '' : clientID;
-  }
-
-  const realBtn = document.getElementById('google-signin-btn');
-  const mockBtn = document.getElementById('google-signin-mock-btn');
-  const warningCard = document.getElementById('google-activation-warning');
-  const closeWarningBtn = document.getElementById('close-warning-btn');
-
-  // Wire up warning card handlers
-  if (mockBtn && warningCard) {
-    mockBtn.onclick = () => {
-      warningCard.classList.remove('hidden');
-    };
-  }
-  if (closeWarningBtn && warningCard) {
-    closeWarningBtn.onclick = () => {
-      warningCard.classList.add('hidden');
+  if (tabLoginBtn) {
+    tabLoginBtn.onclick = () => {
+      activeAuthMode = 'login';
+      tabLoginBtn.classList.add('active');
+      if (tabSignupBtn) tabSignupBtn.classList.remove('active');
+      document.getElementById('auth-title').textContent = "Welcome to TimeMaster";
+      document.getElementById('auth-desc').textContent = "Sign in to load your personalized, isolated workspace.";
+      document.getElementById('signup-confirm-group').classList.add('hidden');
+      document.getElementById('auth-submit-btn').textContent = "Establish Connection";
+      resetAuthAlerts();
     };
   }
 
-  // Toggle button visibility based on Client ID setting
-  const isDefaultId = clientID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
-  if (isDefaultId) {
-    if (realBtn) realBtn.classList.add('hidden');
-    if (mockBtn) mockBtn.classList.remove('hidden');
-  } else {
-    if (realBtn) realBtn.classList.remove('hidden');
-    if (mockBtn) mockBtn.classList.add('hidden');
+  if (tabSignupBtn) {
+    tabSignupBtn.onclick = () => {
+      activeAuthMode = 'signup';
+      tabSignupBtn.classList.add('active');
+      if (tabLoginBtn) tabLoginBtn.classList.remove('active');
+      document.getElementById('auth-title').textContent = "Create Account";
+      document.getElementById('auth-desc').textContent = "Register a new isolated workspace to start tracking your time.";
+      document.getElementById('signup-confirm-group').classList.remove('hidden');
+      document.getElementById('auth-submit-btn').textContent = "Register & Connect";
+      resetAuthAlerts();
+    };
   }
 
-  if (typeof google === 'undefined') {
-    console.warn("Google GSI client library not loaded yet, retrying in 1s...");
-    setTimeout(initGoogleSignIn, 1000);
-    return;
+  if (authForm) {
+    authForm.onsubmit = handleAuthSubmit;
   }
+  
+  if (btnMockLogin) {
+    btnMockLogin.onclick = handleMockLogin;
+  }
+}
 
-  try {
-    google.accounts.id.initialize({
-      client_id: clientID,
-      callback: handleCredentialResponse
-    });
-    
-    if (realBtn) {
-      google.accounts.id.renderButton(
-        realBtn,
-        { theme: "outline", size: "large", width: "240", text: "signin_with" }
-      );
+function resetAuthAlerts() {
+  const err = document.getElementById('auth-error');
+  const succ = document.getElementById('auth-success');
+  if (err) err.classList.add('hidden');
+  if (succ) succ.classList.add('hidden');
+}
+
+// Client-side Local storage user registration dictionary helper
+function getLocalUsers() {
+  const users = localStorage.getItem('timemaster-local-accounts');
+  if (users) {
+    try {
+      return JSON.parse(users);
+    } catch (e) {
+      console.error("Failed to parse local users list:", e);
     }
-  } catch (e) {
-    console.warn("Failed to initialize Google GSI:", e);
   }
+  // Default fallback user account
+  return { "abdalla": "2000" };
 }
 
-function handleCredentialResponse(response) {
-  const jwt = response.credential;
-  const payload = parseJwt(jwt);
-  if (payload) {
-    sessionStorage.setItem('timemaster-token', jwt);
-    currentUser = {
-      id: payload.sub,
-      name: payload.name,
-      email: payload.email,
-      avatar: payload.picture
-    };
+function saveLocalUser(username, password) {
+  const users = getLocalUsers();
+  users[username] = password;
+  localStorage.setItem('timemaster-local-accounts', JSON.stringify(users));
+}
+
+async function handleAuthSubmit(e) {
+  e.preventDefault();
+  resetAuthAlerts();
+  
+  const usernameInput = document.getElementById('auth-username');
+  const passwordInput = document.getElementById('auth-password');
+  const confirmPasswordInput = document.getElementById('auth-confirm-password');
+  const errorMsg = document.getElementById('auth-error');
+  const successMsg = document.getElementById('auth-success');
+  
+  const username = usernameInput.value.trim().toLowerCase();
+  const password = passwordInput.value.trim();
+  
+  if (!username || !password) return;
+  
+  if (activeAuthMode === 'signup') {
+    const confirm = confirmPasswordInput.value.trim();
+    if (password !== confirm) {
+      errorMsg.textContent = "Sign Up Failed: Passwords do not match";
+      errorMsg.classList.remove('hidden');
+      return;
+    }
     
-    const loginOverlay = document.getElementById('login-overlay');
-    if (loginOverlay) loginOverlay.classList.add('hidden');
-    updateHeaderUserProfile();
-    fetchState();
+    // Attempt registration
+    try {
+      const res = await fetch(`${localServerUrl || ''}/api/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        successMsg.textContent = "Account registered successfully! Logging in...";
+        successMsg.classList.remove('hidden');
+        
+        setTimeout(async () => {
+          sessionStorage.setItem('timemaster-token', data.token);
+          currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
+          updateHeaderUserProfile();
+          document.getElementById('login-overlay').classList.add('hidden');
+          await fetchState();
+        }, 1000);
+      } else if (res.status === 400) {
+        const err = await res.json();
+        errorMsg.textContent = `Sign Up Failed: ${err.message || 'Username already exists'}`;
+        errorMsg.classList.remove('hidden');
+      } else {
+        throw new Error("Registration endpoint returned error status");
+      }
+    } catch (err) {
+      console.warn("Server registration failed or unavailable, falling back to local registry:", err);
+      // Static/offline mode: check localStorage
+      const users = getLocalUsers();
+      if (users[username]) {
+        errorMsg.textContent = "Sign Up Failed: Username already exists";
+        errorMsg.classList.remove('hidden');
+      } else {
+        saveLocalUser(username, password);
+        successMsg.textContent = "Account registered locally! Loading workspace...";
+        successMsg.classList.remove('hidden');
+        
+        setTimeout(async () => {
+          sessionStorage.setItem('timemaster-token', `auth-token-${username}`);
+          currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
+          updateHeaderUserProfile();
+          document.getElementById('login-overlay').classList.add('hidden');
+          await fetchState();
+        }, 1000);
+      }
+    }
+  } else {
+    // Attempt login
+    try {
+      const res = await fetch(`${localServerUrl || ''}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        sessionStorage.setItem('timemaster-token', data.token);
+        currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
+        updateHeaderUserProfile();
+        document.getElementById('login-overlay').classList.add('hidden');
+        await fetchState();
+      } else {
+        const err = await res.json();
+        errorMsg.textContent = `Login Failed: ${err.message || 'Invalid credentials'}`;
+        errorMsg.classList.remove('hidden');
+        shakeAuthForm();
+      }
+    } catch (err) {
+      console.warn("Server login failed or unavailable, falling back to local registry:", err);
+      // Static/offline mode: check localStorage credentials
+      const users = getLocalUsers();
+      if (users[username] && users[username] === password) {
+        sessionStorage.setItem('timemaster-token', `auth-token-${username}`);
+        currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
+        updateHeaderUserProfile();
+        document.getElementById('login-overlay').classList.add('hidden');
+        await fetchState();
+      } else {
+        errorMsg.textContent = "Login Failed: Invalid username or password";
+        errorMsg.classList.remove('hidden');
+        shakeAuthForm();
+      }
+    }
   }
 }
 
-function parseJwt(token) {
-  try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-    return JSON.parse(jsonPayload);
-  } catch (e) {
-    console.error("JWT decoding failed:", e);
-    return null;
+function shakeAuthForm() {
+  const card = document.querySelector('.landing-container');
+  if (card) {
+    card.classList.add('overdue-alert');
+    setTimeout(() => card.classList.remove('overdue-alert'), 600);
   }
 }
 
@@ -745,8 +809,8 @@ function handleLogout() {
   updateEnergyUI();
   updateKpis();
   
-  // Reload Google sign-in panel buttons
-  initGoogleSignIn();
+  // Re-initialize tab triggers
+  initAuthUI();
 }
 
 function updateHeaderUserProfile() {
@@ -756,7 +820,9 @@ function updateHeaderUserProfile() {
   
   if (!currentUser) return;
   
-  if (userDisplayName) userDisplayName.textContent = currentUser.name;
+  // Capitalize name for display
+  const name = currentUser.name.charAt(0).toUpperCase() + currentUser.name.slice(1);
+  if (userDisplayName) userDisplayName.textContent = name;
   
   if (currentUser.avatar) {
     if (userAvatar) {
@@ -767,63 +833,6 @@ function updateHeaderUserProfile() {
   } else {
     if (userAvatar) userAvatar.classList.add('hidden');
     if (userPlaceholder) userPlaceholder.classList.remove('hidden');
-  }
-}
-
-// Login Authentication Handler
-async function handleLoginSubmit(e) {
-  e.preventDefault();
-  const loginUsernameInput = document.getElementById('login-username');
-  const loginPasswordInput = document.getElementById('login-password');
-  const loginOverlay = document.getElementById('login-overlay');
-  const loginErrorMsg = document.getElementById('login-error');
-  
-  const username = loginUsernameInput.value.trim();
-  const password = loginPasswordInput.value.trim();
-  
-  let authenticated = false;
-  
-  try {
-    const res = await fetch(`${localServerUrl || ''}/api/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ username, password })
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      sessionStorage.setItem('timemaster-token', data.token);
-      authenticated = true;
-    } else if (res.status === 404) {
-      // Missing API route (static space deployment) -> fall back to local check
-      if (username === 'abdalla' && password === '2000') {
-        sessionStorage.setItem('timemaster-token', 'auth-token-timemaster-2000');
-        authenticated = true;
-      }
-    }
-  } catch (err) {
-    console.error("Login verification failed, using offline fallback:", err);
-    if (username === 'abdalla' && password === '2000') {
-      sessionStorage.setItem('timemaster-token', 'auth-token-timemaster-2000');
-      authenticated = true;
-    }
-  }
-  
-  if (authenticated) {
-    currentUser = { id: 'default', name: 'Abdalla (Local)', email: 'local@timemaster.local', avatar: '' };
-    updateHeaderUserProfile();
-    loginOverlay.classList.add('hidden');
-    loginErrorMsg.classList.add('hidden');
-    await fetchState();
-  } else {
-    loginErrorMsg.classList.remove('hidden');
-    const card = document.querySelector('.login-card');
-    if (card) {
-      card.classList.add('overdue-alert');
-      setTimeout(() => card.classList.remove('overdue-alert'), 600);
-    }
   }
 }
 

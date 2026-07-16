@@ -55,17 +55,29 @@ function readDb() {
       db = {
         users: {
           default: {
-            energy: db.energy !== undefined ? db.energy : 80,
-            activeFocusTaskId: db.activeFocusTaskId || null,
-            tasks: db.tasks || [],
-            weapons: db.weapons || getDefaultUserState().weapons,
-            superpowers: db.superpowers || getDefaultUserState().superpowers,
-            rechargeState: db.rechargeState || getDefaultUserState().rechargeState,
-            values: db.values || getDefaultUserState().values
+            password: "2000",
+            state: {
+              energy: db.energy !== undefined ? db.energy : 80,
+              activeFocusTaskId: db.activeFocusTaskId || null,
+              tasks: db.tasks || [],
+              weapons: db.weapons || getDefaultUserState().weapons,
+              superpowers: db.superpowers || getDefaultUserState().superpowers,
+              rechargeState: db.rechargeState || getDefaultUserState().rechargeState,
+              values: db.values || getDefaultUserState().values
+            }
           }
         }
       };
       fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf8');
+    } else {
+      // Check if default user is flat and migrate it
+      if (db.users.default && !db.users.default.state) {
+        db.users.default = {
+          password: "2000",
+          state: db.users.default
+        };
+        fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf8');
+      }
     }
     return db;
   } catch (error) {
@@ -89,26 +101,63 @@ function getUserState(userId) {
   const db = readDb();
   const id = userId || 'default';
   if (!db.users[id]) {
-    db.users[id] = getDefaultUserState();
+    db.users[id] = {
+      password: '',
+      state: getDefaultUserState()
+    };
     writeDb(db);
   }
-  return db.users[id];
+  return db.users[id].state;
 }
 
 function saveUserState(userId, userState) {
   const db = readDb();
   const id = userId || 'default';
-  db.users[id] = userState;
+  if (!db.users[id]) {
+    db.users[id] = {
+      password: '',
+      state: userState
+    };
+  } else {
+    db.users[id].state = userState;
+  }
   return writeDb(db);
 }
 
 // API Routes
+app.post('/api/register', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ status: "error", message: "Username and password are required" });
+  }
+  
+  const db = readDb();
+  if (db.users[username]) {
+    return res.status(400).json({ status: "error", message: "Username already exists" });
+  }
+  
+  db.users[username] = {
+    password: password,
+    state: getDefaultUserState()
+  };
+  
+  const success = writeDb(db);
+  if (success) {
+    res.json({ status: "success", token: `auth-token-${username}` });
+  } else {
+    res.status(500).json({ status: "error", message: "Failed to create account" });
+  }
+});
+
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-  if (username === 'abdalla' && password === '2000') {
-    res.json({ status: "success", token: "auth-token-timemaster-2000" });
+  const db = readDb();
+  const user = db.users[username];
+  
+  if (user && user.password === password) {
+    res.json({ status: "success", token: `auth-token-${username}` });
   } else {
-    res.status(401).json({ status: "error", message: "Invalid credentials" });
+    res.status(401).json({ status: "error", message: "Invalid username or password" });
   }
 });
 

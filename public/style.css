@@ -2152,7 +2152,50 @@ body.light-theme .btn-expand-task:hover {
   width: 100% !important;
 }
 
-.local-auth-card .input-group {
+/* Tabbed Authentication Component */
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 1rem;
+}
+
+.auth-tab-btn {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: var(--transition);
+  outline: none;
+}
+
+.auth-tab-btn:hover {
+  color: var(--text-main);
+}
+
+.auth-tab-btn.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(129, 140, 248, 0.3);
+}
+
+#auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+#auth-form .input-group {
   display: flex !important;
   flex-direction: column !important;
   gap: 6px !important;
@@ -2161,7 +2204,7 @@ body.light-theme .btn-expand-task:hover {
   text-align: left !important;
 }
 
-.local-auth-card label {
+#auth-form label {
   font-size: 0.72rem !important;
   font-weight: 600 !important;
   color: var(--text-muted) !important;
@@ -2170,7 +2213,7 @@ body.light-theme .btn-expand-task:hover {
   margin-bottom: 2px !important;
 }
 
-.local-auth-card input {
+#auth-form input {
   width: 100% !important;
   background: rgba(0, 0, 0, 0.3) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -2183,9 +2226,21 @@ body.light-theme .btn-expand-task:hover {
   transition: var(--transition) !important;
 }
 
-.local-auth-card input:focus {
+#auth-form input:focus {
   border-color: var(--primary) !important;
   box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2) !important;
+}
+
+.login-success-msg {
+  color: #34d399 !important;
+  font-size: 0.82rem !important;
+  margin: 8px 0 !important;
+  font-weight: 600 !important;
+  background: rgba(52, 211, 153, 0.08) !important;
+  border: 1px solid rgba(52, 211, 153, 0.25) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 10px !important;
+  text-align: center !important;
 }
 
 

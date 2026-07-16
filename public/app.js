@@ -226,6 +226,23 @@ async function fetchIpInfo() {
   }
 }
 
+// LocalStorage Offline Backups
+function saveToLocalStorage() {
+  localStorage.setItem('timemaster-state', JSON.stringify(state));
+}
+
+function loadFromLocalStorage() {
+  const cached = localStorage.getItem('timemaster-state');
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch (e) {
+      console.error("Failed to parse local storage cache:", e);
+    }
+  }
+  return null;
+}
+
 // Fetch state from server
 async function fetchState() {
   try {
@@ -247,6 +264,7 @@ async function fetchState() {
     const rechargeChanged = JSON.stringify(state.rechargeState) !== JSON.stringify(data.rechargeState);
 
     state = data;
+    saveToLocalStorage(); // Backup locally
     
     if (tasksChanged) {
       renderTasks();
@@ -270,6 +288,38 @@ async function fetchState() {
     console.warn("Failed to fetch state, operating in cached offline mode:", error);
     isOffline = true;
     updateSyncStatusUI();
+    
+    // Load local storage fallback
+    const cachedData = loadFromLocalStorage();
+    if (cachedData) {
+      // Check if tasks list actually changed before re-rendering
+      const tasksChanged = JSON.stringify(state.tasks) !== JSON.stringify(cachedData.tasks);
+      const energyChanged = state.energy !== cachedData.energy;
+      const valuesChanged = JSON.stringify(state.values) !== JSON.stringify(cachedData.values);
+      const weaponsChanged = JSON.stringify(state.weapons) !== JSON.stringify(cachedData.weapons);
+      const rechargeChanged = JSON.stringify(state.rechargeState) !== JSON.stringify(cachedData.rechargeState);
+
+      state = cachedData;
+      
+      if (tasksChanged) {
+        renderTasks();
+        updateKpis();
+      }
+      if (energyChanged) {
+        updateEnergyUI();
+      }
+      if (valuesChanged) {
+        renderValues();
+        updateKpis();
+      }
+      if (weaponsChanged) {
+        renderWeapons();
+      }
+      if (rechargeChanged) {
+        renderSuperpowers();
+        handleRechargeStateChange();
+      }
+    }
   }
 }
 
@@ -286,6 +336,8 @@ async function saveState() {
     
     if (!res.ok) throw new Error("Failed to write to database");
 
+    saveToLocalStorage(); // Backup locally
+
     if (isOffline) {
       isOffline = false;
       updateSyncStatusUI();
@@ -296,6 +348,9 @@ async function saveState() {
     isOffline = true;
     hasUnsavedChanges = true;
     updateSyncStatusUI();
+    
+    // Save to local cache immediately
+    saveToLocalStorage();
   }
 }
 
@@ -504,6 +559,8 @@ async function handleLoginSubmit(e) {
   const username = loginUsernameInput.value.trim();
   const password = loginPasswordInput.value.trim();
   
+  let authenticated = false;
+  
   try {
     const res = await fetch(`${localServerUrl || ''}/api/login`, {
       method: 'POST',
@@ -516,22 +573,31 @@ async function handleLoginSubmit(e) {
     if (res.ok) {
       const data = await res.json();
       sessionStorage.setItem('timemaster-token', data.token);
-      loginOverlay.classList.add('hidden');
-      loginErrorMsg.classList.add('hidden');
-    } else {
-      loginErrorMsg.classList.remove('hidden');
-      const card = document.querySelector('.login-card');
-      card.classList.add('overdue-alert');
-      setTimeout(() => card.classList.remove('overdue-alert'), 600);
+      authenticated = true;
+    } else if (res.status === 404) {
+      // Missing API route (static space deployment) -> fall back to local check
+      if (username === 'abdalla' && password === '2000') {
+        sessionStorage.setItem('timemaster-token', 'auth-token-timemaster-2000');
+        authenticated = true;
+      }
     }
   } catch (err) {
     console.error("Login verification failed, using offline fallback:", err);
     if (username === 'abdalla' && password === '2000') {
       sessionStorage.setItem('timemaster-token', 'auth-token-timemaster-2000');
-      loginOverlay.classList.add('hidden');
-      loginErrorMsg.classList.add('hidden');
-    } else {
-      loginErrorMsg.classList.remove('hidden');
+      authenticated = true;
+    }
+  }
+  
+  if (authenticated) {
+    loginOverlay.classList.add('hidden');
+    loginErrorMsg.classList.add('hidden');
+  } else {
+    loginErrorMsg.classList.remove('hidden');
+    const card = document.querySelector('.login-card');
+    if (card) {
+      card.classList.add('overdue-alert');
+      setTimeout(() => card.classList.remove('overdue-alert'), 600);
     }
   }
 }

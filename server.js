@@ -3,6 +3,9 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+
+const activeSessions = {};
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -124,6 +127,24 @@ function saveUserState(userId, userState) {
   return writeDb(db);
 }
 
+// Helper to extract session username from request
+function getSessionUser(req) {
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    // Allow mock developer tokens to directly bypass session check locally
+    if (token.startsWith('mock-')) {
+      return token.replace('mock-', '');
+    }
+    // Allow old legacy auth-token compatibility
+    if (token.startsWith('auth-token-')) {
+      return token.replace('auth-token-', '');
+    }
+    return activeSessions[token];
+  }
+  return null;
+}
+
 // API Routes
 app.post('/api/register', (req, res) => {
   const { username, password } = req.body;
@@ -132,18 +153,22 @@ app.post('/api/register', (req, res) => {
   }
   
   const db = readDb();
-  if (db.users[username]) {
+  const normalizedUser = username.trim().toLowerCase();
+  
+  if (db.users[normalizedUser]) {
     return res.status(400).json({ status: "error", message: "Username already exists" });
   }
   
-  db.users[username] = {
+  db.users[normalizedUser] = {
     password: password,
     state: getDefaultUserState()
   };
   
   const success = writeDb(db);
   if (success) {
-    res.json({ status: "success", token: `auth-token-${username}` });
+    const token = crypto.randomBytes(24).toString('hex');
+    activeSessions[token] = normalizedUser;
+    res.json({ status: "success", token: token });
   } else {
     res.status(500).json({ status: "error", message: "Failed to create account" });
   }
@@ -151,24 +176,37 @@ app.post('/api/register', (req, res) => {
 
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ status: "error", message: "Username and password are required" });
+  }
+  
   const db = readDb();
-  const user = db.users[username];
+  const normalizedUser = username.trim().toLowerCase();
+  const user = db.users[normalizedUser];
   
   if (user && user.password === password) {
-    res.json({ status: "success", token: `auth-token-${username}` });
+    const token = crypto.randomBytes(24).toString('hex');
+    activeSessions[token] = normalizedUser;
+    res.json({ status: "success", token: token });
   } else {
     res.status(401).json({ status: "error", message: "Invalid username or password" });
   }
 });
 
 app.get('/api/state', (req, res) => {
-  const userId = req.headers['x-user-id'] || 'default';
-  res.json(getUserState(userId));
+  const username = getSessionUser(req);
+  if (!username) {
+    return res.status(401).json({ status: "error", message: "Unauthorized session token" });
+  }
+  res.json(getUserState(username));
 });
 
 app.post('/api/state', (req, res) => {
-  const userId = req.headers['x-user-id'] || 'default';
-  const success = saveUserState(userId, req.body);
+  const username = getSessionUser(req);
+  if (!username) {
+    return res.status(401).json({ status: "error", message: "Unauthorized session token" });
+  }
+  const success = saveUserState(username, req.body);
   if (success) {
     res.json({ status: "success", message: "State saved successfully" });
   } else {

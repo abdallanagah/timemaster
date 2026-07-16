@@ -158,6 +158,8 @@ async function initApp() {
 
   if (currentUser) {
     if (loginOverlay) loginOverlay.classList.add('hidden');
+    const dashboard = document.querySelector('.dashboard-container');
+    if (dashboard) dashboard.classList.remove('hidden');
     updateHeaderUserProfile();
     await fetchState();
   } else {
@@ -261,12 +263,17 @@ function loadFromLocalStorage() {
 // Fetch state from server
 async function fetchState() {
   try {
-    const userId = currentUser ? currentUser.id : 'default';
+    const token = sessionStorage.getItem('timemaster-token');
     const res = await fetch('/api/state', {
       headers: {
-        'X-User-Id': userId
+        'Authorization': `Bearer ${token}`
       }
     });
+    if (res.status === 401) {
+      console.warn("Session expired or unauthorized. Logging out.");
+      handleLogout();
+      return;
+    }
     if (!res.ok) throw new Error("Server error");
     const data = await res.json();
     
@@ -346,16 +353,21 @@ async function fetchState() {
 // Save state to local server with offline caching mechanism
 async function saveState() {
   try {
-    const userId = currentUser ? currentUser.id : 'default';
+    const token = sessionStorage.getItem('timemaster-token');
     const res = await fetch('/api/state', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Id': userId
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(state)
     });
     
+    if (res.status === 401) {
+      console.warn("Session expired or unauthorized. Logging out.");
+      handleLogout();
+      return;
+    }
     if (!res.ok) throw new Error("Failed to write to database");
 
     saveToLocalStorage(); // Backup locally
@@ -681,6 +693,8 @@ async function handleAuthSubmit(e) {
           sessionStorage.setItem('timemaster-token', data.token);
           currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
           updateHeaderUserProfile();
+          const dashboard = document.querySelector('.dashboard-container');
+          if (dashboard) dashboard.classList.remove('hidden');
           document.getElementById('login-overlay').classList.add('hidden');
           await fetchState();
         }, 1000);
@@ -707,6 +721,8 @@ async function handleAuthSubmit(e) {
           sessionStorage.setItem('timemaster-token', `auth-token-${username}`);
           currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
           updateHeaderUserProfile();
+          const dashboard = document.querySelector('.dashboard-container');
+          if (dashboard) dashboard.classList.remove('hidden');
           document.getElementById('login-overlay').classList.add('hidden');
           await fetchState();
         }, 1000);
@@ -726,6 +742,8 @@ async function handleAuthSubmit(e) {
         sessionStorage.setItem('timemaster-token', data.token);
         currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
         updateHeaderUserProfile();
+        const dashboard = document.querySelector('.dashboard-container');
+        if (dashboard) dashboard.classList.remove('hidden');
         document.getElementById('login-overlay').classList.add('hidden');
         await fetchState();
       } else {
@@ -742,6 +760,8 @@ async function handleAuthSubmit(e) {
         sessionStorage.setItem('timemaster-token', `auth-token-${username}`);
         currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
         updateHeaderUserProfile();
+        const dashboard = document.querySelector('.dashboard-container');
+        if (dashboard) dashboard.classList.remove('hidden');
         document.getElementById('login-overlay').classList.add('hidden');
         await fetchState();
       } else {
@@ -789,6 +809,8 @@ function handleMockLogin() {
   
   const loginOverlay = document.getElementById('login-overlay');
   if (loginOverlay) loginOverlay.classList.add('hidden');
+  const dashboard = document.querySelector('.dashboard-container');
+  if (dashboard) dashboard.classList.remove('hidden');
   updateHeaderUserProfile();
   fetchState();
 }
@@ -799,6 +821,8 @@ function handleLogout() {
   
   const loginOverlay = document.getElementById('login-overlay');
   if (loginOverlay) loginOverlay.classList.remove('hidden');
+  const dashboard = document.querySelector('.dashboard-container');
+  if (dashboard) dashboard.classList.add('hidden');
   
   // Clear layout tasks and state
   state.tasks = [];

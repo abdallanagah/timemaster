@@ -2442,4 +2442,57 @@ body.light-theme .btn-expand-task:hover {
   background: #6366f1;
 }
 
+/* Association Info Card Styles */
+.association-info-card {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 12px 16px !important;
+  margin-bottom: 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  text-align: left !important;
+}
+
+.association-info-card.hidden {
+  display: none !important;
+}
+
+.association-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+  font-size: 0.85rem;
+}
+
+.association-card-header i {
+  width: 16px;
+  height: 16px;
+}
+
+.association-card-body {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.association-desc {
+  margin: 0 0 6px 0 !important;
+  font-style: italic !important;
+  font-weight: 500 !important;
+  color: var(--text-main) !important;
+}
+
+.association-usage {
+  margin: 0 !important;
+  font-size: 0.75rem !important;
+  line-height: 1.45 !important;
+}
+
+.association-usage strong {
+  color: var(--text-main);
+}
+
 

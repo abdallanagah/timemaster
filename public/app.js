@@ -1300,6 +1300,72 @@ function renderSubtasksList(taskId) {
   });
 }
 
+function renderAssociationInfoCard(taskId) {
+  const container = document.getElementById(`association-info-${taskId}`);
+  if (!container) return;
+  
+  container.innerHTML = '';
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task || task.type === 'general') {
+    container.classList.add('hidden');
+    return;
+  }
+  
+  container.classList.remove('hidden');
+  
+  let title = '';
+  let desc = '';
+  let usage = '';
+  let icon = '';
+  
+  if (task.type === 'weapon') {
+    icon = 'swords';
+    const cat = task.weaponCategory || 'deepFocus';
+    const weapon = state.weapons[cat];
+    if (weapon) {
+      title = `Weapon Equip: ${weapon.name}`;
+      desc = weapon.description;
+      usage = `🎯 <strong>Use:</strong> Activating focus time on this task will lock the tracking session to <strong>${weapon.duration} minutes</strong> to optimize your output.`;
+    }
+  } else if (task.type === 'value') {
+    icon = 'crown';
+    const cat = task.valueCategory || 'health';
+    const val = state.values[cat];
+    if (val) {
+      title = `Value Alignment: ${val.name}`;
+      desc = `Every completed task in Q2 (Values) feeds this score. Current Score: ${val.score || 0} pts.`;
+      usage = `🎯 <strong>Use:</strong> Completing this task inside the Q2 Column adds <strong>+10 score points</strong> directly to your core value metric.`;
+    }
+  } else if (task.type === 'superpower') {
+    icon = 'zap';
+    const cat = task.superpowerCategory || 'breathing';
+    const power = state.superpowers[cat];
+    if (power) {
+      title = `Superpower Recharge: ${power.name}`;
+      desc = power.description;
+      usage = `🎯 <strong>Use:</strong> Completing this task automatically triggers a <strong>${power.duration}-minute recharge guide</strong> to restore your neuro-stamina.`;
+    }
+  }
+  
+  container.innerHTML = `
+    <div class="association-card-header">
+      <i data-lucide="${icon}"></i>
+      <strong>${title}</strong>
+    </div>
+    <div class="association-card-body">
+      <p class="association-desc">${desc}</p>
+      <p class="association-usage">${usage}</p>
+    </div>
+  `;
+  
+  lucide.createIcons({
+    attrs: {
+      class: 'inline-icon'
+    },
+    name: [icon]
+  });
+}
+
 // Create a Single Task Item DOM Structure
 function createTaskDOMElement(task) {
   const item = document.createElement('div');
@@ -1393,6 +1459,7 @@ function createTaskDOMElement(task) {
       expandBtn.title = 'Collapse options';
       expandedTasks.add(task.id);
       renderSubtasksList(task.id);
+      renderAssociationInfoCard(task.id);
     } else {
       metaContainer.classList.add('hidden');
       expandBtn.classList.remove('expanded');
@@ -1479,6 +1546,12 @@ function createTaskDOMElement(task) {
 
   gridRow.appendChild(subtasksCol);
   meta.appendChild(gridRow);
+
+  // 3. Dynamic Association Info Card
+  const assocContainer = document.createElement('div');
+  assocContainer.className = 'association-info-card hidden';
+  assocContainer.id = `association-info-${task.id}`;
+  meta.appendChild(assocContainer);
 
   const tagsContainer = document.createElement('div');
   tagsContainer.className = 'task-tags';
@@ -1590,9 +1663,12 @@ function createTaskDOMElement(task) {
   meta.appendChild(actionsRow);
   item.appendChild(meta);
 
-  // Initialize checklist items rendering if expanded
+  // Initialize checklist items and association cards rendering if expanded
   if (isExpanded) {
-    setTimeout(() => renderSubtasksList(task.id), 0);
+    setTimeout(() => {
+      renderSubtasksList(task.id);
+      renderAssociationInfoCard(task.id);
+    }, 0);
   }
 
   return item;

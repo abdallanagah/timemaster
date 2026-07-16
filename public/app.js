@@ -9,6 +9,8 @@ let state = {
   values: {}
 };
 
+let currentUser = null;
+
 let localServerUrl = '';
 let qrCodeInstance = null;
 let syncInterval = null;
@@ -79,7 +81,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
 async function initApp() {
   await fetchIpInfo();
-  await fetchState();
   
   // Guarantee full paint on initial page load
   renderTasks();
@@ -139,16 +140,63 @@ async function initApp() {
   // Verify TimeMaster Authentication
   const loginOverlay = document.getElementById('login-overlay');
   const loginForm = document.getElementById('login-form');
-  const loginUsernameInput = document.getElementById('login-username');
-  const loginPasswordInput = document.getElementById('login-password');
-  const loginErrorMsg = document.getElementById('login-error');
+  const logoutBtn = document.getElementById('logout-btn');
+  const btnMockLogin = document.getElementById('btn-mock-login');
+  
+  if (loginForm) loginForm.addEventListener('submit', handleLoginSubmit);
+  if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+  if (btnMockLogin) btnMockLogin.addEventListener('click', handleMockLogin);
+
+  // Toggle Google config form
+  const toggleConfigBtn = document.getElementById('toggle-config-btn');
+  const configFields = document.getElementById('config-fields');
+  if (toggleConfigBtn && configFields) {
+    toggleConfigBtn.addEventListener('click', () => {
+      configFields.classList.toggle('hidden');
+    });
+  }
+
+  const saveClientIdBtn = document.getElementById('save-client-id-btn');
+  const clientIdInput = document.getElementById('google-client-id-input');
+  if (saveClientIdBtn && clientIdInput) {
+    saveClientIdBtn.addEventListener('click', () => {
+      const id = clientIdInput.value.trim();
+      if (id) {
+        localStorage.setItem('timemaster-google-client-id', id);
+        alert("Google Client ID applied. Re-initializing Google Sign-in...");
+        initGoogleSignIn();
+      } else {
+        localStorage.removeItem('timemaster-google-client-id');
+        alert("Google Client ID cleared. Resetting to mock defaults.");
+        initGoogleSignIn();
+      }
+      configFields.classList.add('hidden');
+    });
+  }
 
   const token = sessionStorage.getItem('timemaster-token');
-  if (token === 'auth-token-timemaster-2000') {
-    loginOverlay.classList.add('hidden');
+  if (token) {
+    if (token === 'mock-abdalla') {
+      currentUser = { id: 'abdalla-mock', name: 'Abdalla Nagah', email: 'abdalla@example.com', avatar: '' };
+    } else if (token === 'mock-guest') {
+      currentUser = { id: 'guest-mock', name: 'Guest User', email: 'guest@example.com', avatar: '' };
+    } else if (token === 'auth-token-timemaster-2000') {
+      currentUser = { id: 'default', name: 'Abdalla (Local)', email: 'local@timemaster.local', avatar: '' };
+    } else {
+      const payload = parseJwt(token);
+      if (payload) {
+        currentUser = { id: payload.sub, name: payload.name, email: payload.email, avatar: payload.picture };
+      }
+    }
+  }
+
+  if (currentUser) {
+    if (loginOverlay) loginOverlay.classList.add('hidden');
+    updateHeaderUserProfile();
+    await fetchState();
   } else {
-    loginOverlay.classList.remove('hidden');
-    loginForm.addEventListener('submit', handleLoginSubmit);
+    if (loginOverlay) loginOverlay.classList.remove('hidden');
+    initGoogleSignIn();
   }
 
   // Check if weapon or recharge is currently active from database
@@ -228,11 +276,13 @@ async function fetchIpInfo() {
 
 // LocalStorage Offline Backups
 function saveToLocalStorage() {
-  localStorage.setItem('timemaster-state', JSON.stringify(state));
+  const id = currentUser ? currentUser.id : 'default';
+  localStorage.setItem(`timemaster-state-${id}`, JSON.stringify(state));
 }
 
 function loadFromLocalStorage() {
-  const cached = localStorage.getItem('timemaster-state');
+  const id = currentUser ? currentUser.id : 'default';
+  const cached = localStorage.getItem(`timemaster-state-${id}`);
   if (cached) {
     try {
       return JSON.parse(cached);
@@ -246,7 +296,12 @@ function loadFromLocalStorage() {
 // Fetch state from server
 async function fetchState() {
   try {
-    const res = await fetch('/api/state');
+    const userId = currentUser ? currentUser.id : 'default';
+    const res = await fetch('/api/state', {
+      headers: {
+        'X-User-Id': userId
+      }
+    });
     if (!res.ok) throw new Error("Server error");
     const data = await res.json();
     
@@ -326,10 +381,12 @@ async function fetchState() {
 // Save state to local server with offline caching mechanism
 async function saveState() {
   try {
+    const userId = currentUser ? currentUser.id : 'default';
     const res = await fetch('/api/state', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-User-Id': userId
       },
       body: JSON.stringify(state)
     });
@@ -548,6 +605,145 @@ function playSound(type) {
   }
 }
 
+// Google & Multi-Tenant Authentication Controllers
+function initGoogleSignIn() {
+  const clientID = localStorage.getItem('timemaster-google-client-id') || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+  
+  const clientIdInput = document.getElementById('google-client-id-input');
+  if (clientIdInput) {
+    clientIdInput.value = clientID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com' ? '' : clientID;
+  }
+
+  if (typeof google === 'undefined') {
+    console.warn("Google GSI client library not loaded yet, retrying in 1s...");
+    setTimeout(initGoogleSignIn, 1000);
+    return;
+  }
+
+  try {
+    google.accounts.id.initialize({
+      client_id: clientID,
+      callback: handleCredentialResponse
+    });
+    
+    const btnContainer = document.getElementById("google-signin-btn");
+    if (btnContainer) {
+      google.accounts.id.renderButton(
+        btnContainer,
+        { theme: "outline", size: "large", width: "240", text: "signin_with" }
+      );
+    }
+  } catch (e) {
+    console.warn("Failed to initialize Google GSI:", e);
+  }
+}
+
+function handleCredentialResponse(response) {
+  const jwt = response.credential;
+  const payload = parseJwt(jwt);
+  if (payload) {
+    sessionStorage.setItem('timemaster-token', jwt);
+    currentUser = {
+      id: payload.sub,
+      name: payload.name,
+      email: payload.email,
+      avatar: payload.picture
+    };
+    
+    const loginOverlay = document.getElementById('login-overlay');
+    if (loginOverlay) loginOverlay.classList.add('hidden');
+    updateHeaderUserProfile();
+    fetchState();
+  }
+}
+
+function parseJwt(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.error("JWT decoding failed:", e);
+    return null;
+  }
+}
+
+function handleMockLogin() {
+  const select = document.getElementById('mock-user-select');
+  if (!select) return;
+  
+  const value = select.value;
+  let token = '';
+  if (value === 'abdalla-mock') {
+    token = 'mock-abdalla';
+    currentUser = {
+      id: 'abdalla-mock',
+      name: 'Abdalla Nagah',
+      email: 'abdalla@example.com',
+      avatar: ''
+    };
+  } else {
+    token = 'mock-guest';
+    currentUser = {
+      id: 'guest-mock',
+      name: 'Guest User',
+      email: 'guest@example.com',
+      avatar: ''
+    };
+  }
+  
+  sessionStorage.setItem('timemaster-token', token);
+  
+  const loginOverlay = document.getElementById('login-overlay');
+  if (loginOverlay) loginOverlay.classList.add('hidden');
+  updateHeaderUserProfile();
+  fetchState();
+}
+
+function handleLogout() {
+  sessionStorage.removeItem('timemaster-token');
+  currentUser = null;
+  
+  const loginOverlay = document.getElementById('login-overlay');
+  if (loginOverlay) loginOverlay.classList.remove('hidden');
+  
+  // Clear layout tasks and state
+  state.tasks = [];
+  state.energy = 80;
+  state.activeFocusTaskId = null;
+  
+  renderTasks();
+  updateEnergyUI();
+  updateKpis();
+  
+  // Reload Google sign-in panel buttons
+  initGoogleSignIn();
+}
+
+function updateHeaderUserProfile() {
+  const userAvatar = document.getElementById('user-avatar');
+  const userPlaceholder = document.getElementById('user-avatar-placeholder');
+  const userDisplayName = document.getElementById('user-display-name');
+  
+  if (!currentUser) return;
+  
+  if (userDisplayName) userDisplayName.textContent = currentUser.name;
+  
+  if (currentUser.avatar) {
+    if (userAvatar) {
+      userAvatar.src = currentUser.avatar;
+      userAvatar.classList.remove('hidden');
+    }
+    if (userPlaceholder) userPlaceholder.classList.add('hidden');
+  } else {
+    if (userAvatar) userAvatar.classList.add('hidden');
+    if (userPlaceholder) userPlaceholder.classList.remove('hidden');
+  }
+}
+
 // Login Authentication Handler
 async function handleLoginSubmit(e) {
   e.preventDefault();
@@ -590,8 +786,11 @@ async function handleLoginSubmit(e) {
   }
   
   if (authenticated) {
+    currentUser = { id: 'default', name: 'Abdalla (Local)', email: 'local@timemaster.local', avatar: '' };
+    updateHeaderUserProfile();
     loginOverlay.classList.add('hidden');
     loginErrorMsg.classList.add('hidden');
+    await fetchState();
   } else {
     loginErrorMsg.classList.remove('hidden');
     const card = document.querySelector('.login-card');

@@ -77,18 +77,26 @@ function readDb() {
     }
     return db;
   } catch (error) {
-    console.error("Error reading database:", error);
-    return { users: {} };
+    console.error("Critical error reading database file:", error);
+    throw error; // Propagate critical database read failures
   }
 }
 
-// Helper to write DB
+// Helper to write DB atomically using temporary replacement files
 function writeDb(db) {
+  const tempPath = config.DB_PATH + '.tmp';
   try {
-    fs.writeFileSync(config.DB_PATH, JSON.stringify(db, null, 2), 'utf8');
+    fs.writeFileSync(tempPath, JSON.stringify(db, null, 2), 'utf8');
+    fs.renameSync(tempPath, config.DB_PATH);
     return true;
   } catch (error) {
-    console.error("Error writing database:", error);
+    console.error("Error writing database atomically:", error);
+    // Cleanup temporary buffer if it was created
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (_) {}
     return false;
   }
 }

@@ -119,9 +119,15 @@ router.post('/state', (req, res) => {
   if (!dbModule.validateStateSchema(req.body)) {
     return res.status(400).json({ status: "error", message: "Invalid workspace state payload schema" });
   }
-  const success = dbModule.saveUserState(username, req.body);
-  if (success) {
-    res.json({ status: "success", message: "State saved successfully" });
+  const result = dbModule.saveUserState(username, req.body);
+  if (result.status === 'success') {
+    res.json({ status: "success", message: "State saved successfully", version: result.version });
+  } else if (result.status === 'conflict') {
+    res.status(409).json({ 
+      status: "conflict", 
+      message: "Workspace conflict: local version out-of-date.", 
+      serverState: result.serverState 
+    });
   } else {
     res.status(500).json({ status: "error", message: "Failed to write data" });
   }

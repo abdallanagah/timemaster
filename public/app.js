@@ -155,15 +155,9 @@ async function initApp() {
   if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
   const token = sessionStorage.getItem('timemaster-token');
+  const savedUser = sessionStorage.getItem('timemaster-username') || 'Operator';
   if (token) {
-    if (token === 'mock-abdalla') {
-      currentUser = { id: 'abdalla-mock', name: 'Abdalla Nagah', email: 'abdalla@example.com', avatar: '' };
-    } else if (token === 'mock-guest') {
-      currentUser = { id: 'guest-mock', name: 'Guest User', email: 'guest@example.com', avatar: '' };
-    } else if (token.startsWith('auth-token-')) {
-      const username = token.replace('auth-token-', '');
-      currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
-    }
+    currentUser = { id: savedUser, name: savedUser, email: `${savedUser}@timemaster.local`, avatar: '' };
   }
 
   if (currentUser) {
@@ -378,8 +372,29 @@ async function saveState() {
       handleLogout();
       return;
     }
+    if (res.status === 409) {
+      const conflictData = await res.json();
+      console.warn("Workspace conflict detected. Reconciling local state with server...");
+      reconcileStateWithServer(conflictData.serverState);
+      saveToLocalStorage();
+      renderTasks();
+      renderWeapons();
+      renderValues();
+      updateEnergyUI();
+      // Resume weapon timer if dynamic merge activated one
+      Object.keys(state.weapons).forEach(k => {
+        if (state.weapons[k].active) {
+          startWeaponTimer(k);
+        }
+      });
+      return;
+    }
     if (!res.ok) throw new Error("Failed to write to database");
 
+    const data = await res.json();
+    if (data.version) {
+      state.version = data.version;
+    }
     saveToLocalStorage(); // Backup locally
 
     if (isOffline) {
@@ -446,6 +461,65 @@ function mergeTasks(serverTasks) {
   return merged;
 }
 
+// Consolidates all metrics, configs, recharge status, active focus timer, and versions on sync
+function reconcileStateWithServer(serverData) {
+  if (!serverData) return;
+  
+  // 1. Merge tasks
+  state.tasks = mergeTasks(serverData.tasks);
+  
+  // 2. Merge values
+  Object.keys(serverData.values || {}).forEach(k => {
+    if (!state.values[k]) {
+      state.values[k] = serverData.values[k];
+    } else {
+      state.values[k].score = Math.max(state.values[k].score || 0, serverData.values[k].score || 0);
+      state.values[k].name = serverData.values[k].name || state.values[k].name;
+    }
+  });
+
+  // 3. Merge weapons
+  Object.keys(serverData.weapons || {}).forEach(k => {
+    if (!state.weapons[k]) {
+      state.weapons[k] = serverData.weapons[k];
+    } else {
+      if (!state.weapons[k].active && serverData.weapons[k].active) {
+        state.weapons[k] = serverData.weapons[k];
+      } else {
+        state.weapons[k].name = serverData.weapons[k].name || state.weapons[k].name;
+        state.weapons[k].description = serverData.weapons[k].description || state.weapons[k].description;
+        state.weapons[k].duration = serverData.weapons[k].duration || state.weapons[k].duration;
+        if (k === 'deepFocus') {
+          state.weapons[k].breakDuration = serverData.weapons[k].breakDuration !== undefined ? serverData.weapons[k].breakDuration : state.weapons[k].breakDuration;
+        }
+      }
+    }
+  });
+
+  // 4. Merge superpowers
+  Object.keys(serverData.superpowers || {}).forEach(k => {
+    if (!state.superpowers[k]) {
+      state.superpowers[k] = serverData.superpowers[k];
+    }
+  });
+
+  // 5. Merge rechargeState
+  if (!state.rechargeState.active && serverData.rechargeState && serverData.rechargeState.active) {
+    state.rechargeState = serverData.rechargeState;
+  }
+
+  // 6. Merge active focus task ID
+  if (!state.activeFocusTaskId && serverData.activeFocusTaskId) {
+    state.activeFocusTaskId = serverData.activeFocusTaskId;
+  }
+
+  // 7. Merge energy (retain higher value)
+  state.energy = Math.max(state.energy, serverData.energy || 0);
+
+  // 8. Update state version to match server
+  state.version = serverData.version || 1;
+}
+
 // Reconnect and reconcile offline client changes with server state
 async function reconcileOfflineState() {
   try {
@@ -458,16 +532,8 @@ async function reconcileOfflineState() {
     if (!res.ok) throw new Error("Reconciliation fetch failed");
     const serverData = await res.json();
     
-    // Merge tasks
-    state.tasks = mergeTasks(serverData.tasks);
-    
-    // Merge metrics: retain whichever is higher
-    state.energy = Math.max(state.energy, serverData.energy || 0);
-    Object.keys(serverData.values || {}).forEach(k => {
-      if (state.values[k]) {
-        state.values[k].score = Math.max(state.values[k].score, serverData.values[k].score || 0);
-      }
-    });
+    // Deep reconcile with server data
+    reconcileStateWithServer(serverData);
 
     // Save consolidated state back to server
     const saveRes = await fetch('/api/state', {
@@ -485,9 +551,17 @@ async function reconcileOfflineState() {
     updateSyncStatusUI();
     
     renderTasks();
-    updateEnergyUI();
+    renderWeapons();
     renderValues();
+    updateEnergyUI();
     updateKpis();
+    
+    // Resume weapon timer if sync activated one
+    Object.keys(state.weapons).forEach(k => {
+      if (state.weapons[k].active) {
+        startWeaponTimer(k);
+      }
+    });
   } catch (error) {
     console.warn("Failed to reconcile offline sync. Will retry:", error);
   }
@@ -605,7 +679,6 @@ function initAuthUI() {
   const tabLoginBtn = document.getElementById('tab-login-btn');
   const tabSignupBtn = document.getElementById('tab-signup-btn');
   const authForm = document.getElementById('auth-form');
-  const btnMockLogin = document.getElementById('btn-mock-login');
   
   if (tabLoginBtn) {
     tabLoginBtn.onclick = () => {
@@ -636,10 +709,6 @@ function initAuthUI() {
   if (authForm) {
     authForm.onsubmit = handleAuthSubmit;
   }
-  
-  if (btnMockLogin) {
-    btnMockLogin.onclick = handleMockLogin;
-  }
 }
 
 function resetAuthAlerts() {
@@ -647,26 +716,6 @@ function resetAuthAlerts() {
   const succ = document.getElementById('auth-success');
   if (err) err.classList.add('hidden');
   if (succ) succ.classList.add('hidden');
-}
-
-// Client-side Local storage user registration dictionary helper
-function getLocalUsers() {
-  const users = localStorage.getItem('timemaster-local-accounts');
-  if (users) {
-    try {
-      return JSON.parse(users);
-    } catch (e) {
-      console.error("Failed to parse local users list:", e);
-    }
-  }
-  // Default fallback user account
-  return { "abdalla": "2000" };
-}
-
-function saveLocalUser(username, password) {
-  const users = getLocalUsers();
-  users[username] = password;
-  localStorage.setItem('timemaster-local-accounts', JSON.stringify(users));
 }
 
 async function handleAuthSubmit(e) {
@@ -707,6 +756,7 @@ async function handleAuthSubmit(e) {
         
         setTimeout(async () => {
           sessionStorage.setItem('timemaster-token', data.token);
+          sessionStorage.setItem('timemaster-username', username);
           currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
           updateHeaderUserProfile();
           const dashboard = document.querySelector('.dashboard-container');
@@ -722,27 +772,9 @@ async function handleAuthSubmit(e) {
         throw new Error("Registration endpoint returned error status");
       }
     } catch (err) {
-      console.warn("Server registration failed or unavailable, falling back to local registry:", err);
-      // Static/offline mode: check localStorage
-      const users = getLocalUsers();
-      if (users[username]) {
-        errorMsg.textContent = "Sign Up Failed: Username already exists";
-        errorMsg.classList.remove('hidden');
-      } else {
-        saveLocalUser(username, password);
-        successMsg.textContent = "Account registered locally! Loading workspace...";
-        successMsg.classList.remove('hidden');
-        
-        setTimeout(async () => {
-          sessionStorage.setItem('timemaster-token', `auth-token-${username}`);
-          currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
-          updateHeaderUserProfile();
-          const dashboard = document.querySelector('.dashboard-container');
-          if (dashboard) dashboard.classList.remove('hidden');
-          document.getElementById('login-overlay').classList.add('hidden');
-          await fetchState();
-        }, 1000);
-      }
+      console.warn("Server registration network failure:", err);
+      errorMsg.textContent = "Connection Failure: Server is unreachable. Please verify server connection.";
+      errorMsg.classList.remove('hidden');
     }
   } else {
     // Attempt login
@@ -756,6 +788,7 @@ async function handleAuthSubmit(e) {
       if (res.ok) {
         const data = await res.json();
         sessionStorage.setItem('timemaster-token', data.token);
+        sessionStorage.setItem('timemaster-username', username);
         currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
         updateHeaderUserProfile();
         const dashboard = document.querySelector('.dashboard-container');
@@ -769,22 +802,10 @@ async function handleAuthSubmit(e) {
         shakeAuthForm();
       }
     } catch (err) {
-      console.warn("Server login failed or unavailable, falling back to local registry:", err);
-      // Static/offline mode: check localStorage credentials
-      const users = getLocalUsers();
-      if (users[username] && users[username] === password) {
-        sessionStorage.setItem('timemaster-token', `auth-token-${username}`);
-        currentUser = { id: username, name: username, email: `${username}@timemaster.local`, avatar: '' };
-        updateHeaderUserProfile();
-        const dashboard = document.querySelector('.dashboard-container');
-        if (dashboard) dashboard.classList.remove('hidden');
-        document.getElementById('login-overlay').classList.add('hidden');
-        await fetchState();
-      } else {
-        errorMsg.textContent = "Login Failed: Invalid username or password";
-        errorMsg.classList.remove('hidden');
-        shakeAuthForm();
-      }
+      console.warn("Server login network failure:", err);
+      errorMsg.textContent = "Connection Failure: Server is unreachable. Please verify server connection.";
+      errorMsg.classList.remove('hidden');
+      shakeAuthForm();
     }
   }
 }
@@ -797,42 +818,22 @@ function shakeAuthForm() {
   }
 }
 
-function handleMockLogin() {
-  const select = document.getElementById('mock-user-select');
-  if (!select) return;
-  
-  const value = select.value;
-  let token = '';
-  if (value === 'abdalla-mock') {
-    token = 'mock-abdalla';
-    currentUser = {
-      id: 'abdalla-mock',
-      name: 'Abdalla Nagah',
-      email: 'abdalla@example.com',
-      avatar: ''
-    };
-  } else {
-    token = 'mock-guest';
-    currentUser = {
-      id: 'guest-mock',
-      name: 'Guest User',
-      email: 'guest@example.com',
-      avatar: ''
-    };
+async function handleLogout() {
+  const token = sessionStorage.getItem('timemaster-token');
+  if (token) {
+    try {
+      await fetch('/api/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+    } catch (err) {
+      console.warn("Server logout request failed:", err);
+    }
   }
-  
-  sessionStorage.setItem('timemaster-token', token);
-  
-  const loginOverlay = document.getElementById('login-overlay');
-  if (loginOverlay) loginOverlay.classList.add('hidden');
-  const dashboard = document.querySelector('.dashboard-container');
-  if (dashboard) dashboard.classList.remove('hidden');
-  updateHeaderUserProfile();
-  fetchState();
-}
-
-function handleLogout() {
   sessionStorage.removeItem('timemaster-token');
+  sessionStorage.removeItem('timemaster-username');
   currentUser = null;
   
   const loginOverlay = document.getElementById('login-overlay');
@@ -1363,16 +1364,34 @@ function renderAssociationInfoCard(taskId) {
     }
   }
   
-  container.innerHTML = `
-    <div class="association-card-header">
-      <i data-lucide="${icon}"></i>
-      <strong>${escapeHtml(title)}</strong>
-    </div>
-    <div class="association-card-body">
-      <p class="association-desc">${escapeHtml(desc)}</p>
-      <p class="association-usage">${usage}</p>
-    </div>
-  `;
+  container.innerHTML = '';
+  
+  const header = document.createElement('div');
+  header.className = 'association-card-header';
+  
+  const iconEl = document.createElement('i');
+  iconEl.setAttribute('data-lucide', icon);
+  header.appendChild(iconEl);
+  
+  const strong = document.createElement('strong');
+  strong.textContent = title;
+  header.appendChild(strong);
+  
+  const cardBody = document.createElement('div');
+  cardBody.className = 'association-card-body';
+  
+  const descP = document.createElement('p');
+  descP.className = 'association-desc';
+  descP.textContent = desc;
+  cardBody.appendChild(descP);
+  
+  const usageP = document.createElement('p');
+  usageP.className = 'association-usage';
+  usageP.innerHTML = usage; // Safe: usage is statically hardcoded in JS
+  cardBody.appendChild(usageP);
+  
+  container.appendChild(header);
+  container.appendChild(cardBody);
   
   lucide.createIcons({
     attrs: {
@@ -1500,9 +1519,10 @@ function createTaskDOMElement(task) {
   nameEditGroup.className = 'task-edit-name-group';
   nameEditGroup.innerHTML = `
     <label>Task Name</label>
-    <input type="text" class="task-edit-name-input" value="${escapeHtml(task.text)}">
+    <input type="text" class="task-edit-name-input">
   `;
   const nameInput = nameEditGroup.querySelector('.task-edit-name-input');
+  nameInput.value = task.text || '';
   nameInput.addEventListener('change', (e) => {
     updateTaskName(task.id, e.target.value);
   });
@@ -1517,9 +1537,10 @@ function createTaskDOMElement(task) {
   notesCol.className = 'task-notes-col';
   notesCol.innerHTML = `
     <label>Notes & Description</label>
-    <textarea class="task-details-textarea" placeholder="Add task details/notes...">${escapeHtml(task.details)}</textarea>
+    <textarea class="task-details-textarea" placeholder="Add task details/notes..."></textarea>
   `;
   const notesTextarea = notesCol.querySelector('.task-details-textarea');
+  notesTextarea.value = task.details || '';
   notesTextarea.addEventListener('change', (e) => {
     updateTaskDetails(task.id, e.target.value);
   });
@@ -1774,28 +1795,37 @@ function renderWeapons() {
     const info = document.createElement('div');
     info.className = 'weapon-info';
     
+    // Programmatically construct headers and descriptions using .textContent
+    const h4 = document.createElement('h4');
+    h4.textContent = weapon.name;
+    info.appendChild(h4);
+    
     if (key === 'deepFocus') {
-      info.innerHTML = `
-        <h4>${escapeHtml(weapon.name)}</h4>
-        <p>${escapeHtml(weapon.description)}</p>
-        <div class="pomodoro-inputs">
-          <div class="pomo-input-grp">
-            <span class="pomo-lbl">Focus:</span>
-            <input type="number" id="focus-duration-input" min="1" max="120" value="${weapon.duration || 25}" class="pomo-num-input" ${weapon.active ? 'disabled' : ''}>
-            <span class="pomo-unit">m</span>
-          </div>
-          <div class="pomo-input-grp">
-            <span class="pomo-lbl">Break:</span>
-            <input type="number" id="break-duration-input" min="0" max="60" value="${weapon.breakDuration !== undefined ? weapon.breakDuration : 5}" class="pomo-num-input" ${weapon.active ? 'disabled' : ''}>
-            <span class="pomo-unit">m</span>
-          </div>
+      const p = document.createElement('p');
+      p.textContent = weapon.description;
+      info.appendChild(p);
+      
+      const pomoInputs = document.createElement('div');
+      pomoInputs.className = 'pomodoro-inputs';
+      pomoInputs.innerHTML = `
+        <div class="pomo-input-grp">
+          <span class="pomo-lbl">Focus:</span>
+          <input type="number" id="focus-duration-input" min="1" max="120" class="pomo-num-input" ${weapon.active ? 'disabled' : ''}>
+          <span class="pomo-unit">m</span>
+        </div>
+        <div class="pomo-input-grp">
+          <span class="pomo-lbl">Break:</span>
+          <input type="number" id="break-duration-input" min="0" max="60" class="pomo-num-input" ${weapon.active ? 'disabled' : ''}>
+          <span class="pomo-unit">m</span>
         </div>
       `;
+      pomoInputs.querySelector('#focus-duration-input').value = weapon.duration || 25;
+      pomoInputs.querySelector('#break-duration-input').value = weapon.breakDuration !== undefined ? weapon.breakDuration : 5;
+      info.appendChild(pomoInputs);
     } else {
-      info.innerHTML = `
-        <h4>${escapeHtml(weapon.name)}</h4>
-        <p>${escapeHtml(weapon.description)} (${weapon.duration}m)</p>
-      `;
+      const p = document.createElement('p');
+      p.textContent = `${weapon.description} (${weapon.duration}m)`;
+      info.appendChild(p);
     }
     item.appendChild(info);
 
@@ -1842,8 +1872,10 @@ function activateWeapon(key) {
     const focusDurationInput = document.getElementById('focus-duration-input');
     const breakDurationInput = document.getElementById('break-duration-input');
     if (focusDurationInput && breakDurationInput) {
-      weapon.duration = parseInt(focusDurationInput.value) || 25;
-      weapon.breakDuration = parseInt(breakDurationInput.value) || 5;
+      const fVal = parseInt(focusDurationInput.value);
+      weapon.duration = Number.isNaN(fVal) ? 25 : fVal;
+      const bVal = parseInt(breakDurationInput.value);
+      weapon.breakDuration = Number.isNaN(bVal) ? 5 : bVal;
     }
     weapon.sessionType = 'focus';
     weapon.breakStartedAt = null;
@@ -1901,7 +1933,8 @@ function startWeaponTimer(key) {
     let diff = 0;
     
     if (isFocus && sessionType === 'break') {
-      const durationMs = (weapon.breakDuration || 5) * 60 * 1000;
+      const breakVal = (weapon.breakDuration !== undefined && !Number.isNaN(weapon.breakDuration)) ? weapon.breakDuration : 5;
+      const durationMs = breakVal * 60 * 1000;
       const target = new Date(weapon.breakStartedAt).getTime() + durationMs;
       diff = target - now;
     } else {
@@ -2028,15 +2061,28 @@ function renderValues() {
     const item = document.createElement('div');
     item.className = 'value-row';
     
-    item.innerHTML = `
-      <div class="value-title-row">
-        <h4>${escapeHtml(val.name)}</h4>
-        <span class="value-score-badge">${val.score} PTS</span>
-      </div>
-      <div class="value-progress-bg">
-        <div class="value-progress-fill" style="width: ${val.score}%;"></div>
-      </div>
-    `;
+    const titleRow = document.createElement('div');
+    titleRow.className = 'value-title-row';
+    
+    const h4 = document.createElement('h4');
+    h4.textContent = val.name;
+    titleRow.appendChild(h4);
+    
+    const badge = document.createElement('span');
+    badge.className = 'value-score-badge';
+    badge.textContent = `${val.score} PTS`;
+    titleRow.appendChild(badge);
+    
+    const progressBg = document.createElement('div');
+    progressBg.className = 'value-progress-bg';
+    
+    const progressFill = document.createElement('div');
+    progressFill.className = 'value-progress-fill';
+    progressFill.style.width = `${val.score}%`;
+    progressBg.appendChild(progressFill);
+    
+    item.appendChild(titleRow);
+    item.appendChild(progressBg);
     valuesList.appendChild(item);
   });
 }
@@ -2052,10 +2098,15 @@ function renderSuperpowers() {
     
     const info = document.createElement('div');
     info.className = 'superpower-info';
-    info.innerHTML = `
-      <h4>${escapeHtml(power.name)}</h4>
-      <p>${escapeHtml(power.description)} (${power.duration}m)</p>
-    `;
+    
+    const h4 = document.createElement('h4');
+    h4.textContent = power.name;
+    info.appendChild(h4);
+    
+    const p = document.createElement('p');
+    p.textContent = `${power.description} (${power.duration}m)`;
+    info.appendChild(p);
+    
     item.appendChild(info);
 
     const action = document.createElement('div');

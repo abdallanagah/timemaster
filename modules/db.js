@@ -5,6 +5,7 @@ const config = require('../config/server.config');
 // Default User State Generator
 function getDefaultUserState() {
   return {
+    version: 1,
     energy: 80,
     activeFocusTaskId: null,
     tasks: [],
@@ -34,10 +35,13 @@ function getDefaultUserState() {
 function readDb() {
   try {
     if (!fs.existsSync(config.DB_PATH)) {
+      // Prevent static seed account vulnerability in production by using environment settings or randomizing
+      const defaultPassword = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? crypto.randomBytes(24).toString('hex') : '2000');
+
       const salt1 = crypto.randomBytes(16).toString('hex');
-      const hash1 = crypto.scryptSync("2000", salt1, 64).toString('hex');
+      const hash1 = crypto.scryptSync(defaultPassword, salt1, 64).toString('hex');
       const salt2 = crypto.randomBytes(16).toString('hex');
-      const hash2 = crypto.scryptSync("2000", salt2, 64).toString('hex');
+      const hash2 = crypto.scryptSync(defaultPassword, salt2, 64).toString('hex');
 
       const initialDb = { 
         users: { 
@@ -121,27 +125,51 @@ function getUserState(userId) {
     };
     writeDb(db);
   }
+  
+  // Backwards compatibility migration
+  if (db.users[id].state.version === undefined) {
+    db.users[id].state.version = 1;
+    writeDb(db);
+  }
+  
   return db.users[id].state;
 }
 
 function saveUserState(userId, userState) {
   const db = readDb();
   const id = userId || 'default';
+  
   if (!db.users[id]) {
     db.users[id] = {
       password: '',
       state: userState
     };
-  } else {
-    db.users[id].state = userState;
+    db.users[id].state.version = 1;
+    const ok = writeDb(db);
+    return ok ? { status: "success", version: 1 } : { status: "error" };
   }
-  return writeDb(db);
+  
+  const serverState = db.users[id].state;
+  const serverVersion = serverState.version || 1;
+  const clientVersion = userState.version || 1;
+  
+  // Version mismatch: return conflict status containing server version
+  if (clientVersion !== serverVersion) {
+    return { status: "conflict", serverState };
+  }
+  
+  // Increment version on successful updates
+  userState.version = serverVersion + 1;
+  db.users[id].state = userState;
+  
+  const ok = writeDb(db);
+  return ok ? { status: "success", version: userState.version } : { status: "error" };
 }
 
 function validateStateSchema(state) {
   if (!state || typeof state !== 'object') return false;
 
-  const requiredKeys = ['energy', 'activeFocusTaskId', 'tasks', 'weapons', 'superpowers', 'rechargeState', 'values'];
+  const requiredKeys = ['version', 'energy', 'activeFocusTaskId', 'tasks', 'weapons', 'superpowers', 'rechargeState', 'values'];
   const stateKeys = Object.keys(state);
 
   // Check that no unknown keys exist at the root
@@ -155,64 +183,103 @@ function validateStateSchema(state) {
   }
 
   // Type checks
+  if (typeof state.version !== 'number' || state.version < 1) return false;
   if (typeof state.energy !== 'number' || state.energy < 0 || state.energy > 100) return false;
   if (state.activeFocusTaskId !== null && typeof state.activeFocusTaskId !== 'string') return false;
   if (!Array.isArray(state.tasks)) return false;
   if (state.tasks.length > 1000) return false; // Anti DoS limit
 
-  // Validate tasks
-  for (const task of state.tasks) {
-    if (!task || typeof task !== 'object') return false;
-    if (typeof task.id !== 'string' || !task.id) return false;
-    if (typeof task.text !== 'string' || task.text.length > 500) return false;
-    if (!['inbox', 'q1', 'q2', 'q3', 'q4'].includes(task.quadrant)) return false;
-    if (!['active', 'completed'].includes(task.status)) return false;
-    if (!['general', 'weapon', 'value', 'superpower'].includes(task.type)) return false;
-    
-    // Optional details
-    if (task.details !== undefined && (task.details !== null && typeof task.details !== 'string')) return false;
-    
-    // Optional subtasks array
-    if (task.subtasks !== undefined) {
-      if (!Array.isArray(task.subtasks)) return false;
-      if (task.subtasks.length > 100) return false;
-      for (const sub of task.subtasks) {
-        if (!sub || typeof sub !== 'object') return false;
-        if (typeof sub.id !== 'string' || !sub.id) return false;
-        if (typeof sub.text !== 'string' || sub.text.length > 200) return false;
-        if (typeof sub.completed !== 'boolean') return false;
-      }
-    }
-  }
+  // Validate configuration map sizes
+  if (!state.weapons || typeof state.weapons !== 'object' || Object.keys(state.weapons).length > 15) return false;
+  if (!state.values || typeof state.values !== 'object' || Object.keys(state.values).length > 40) return false;
+  if (!state.superpowers || typeof state.superpowers !== 'object' || Object.keys(state.superpowers).length > 15) return false;
 
   // Validate weapons configuration map
-  if (!state.weapons || typeof state.weapons !== 'object') return false;
   for (const k of Object.keys(state.weapons)) {
     const w = state.weapons[k];
     if (!w || typeof w !== 'object') return false;
     if (typeof w.name !== 'string' || w.name.length > 100) return false;
     if (typeof w.description !== 'string' || w.description.length > 300) return false;
     if (typeof w.active !== 'boolean') return false;
-    if (typeof w.duration !== 'number') return false;
+    if (typeof w.duration !== 'number' || w.duration < 1 || w.duration > 360) return false;
   }
 
   // Validate values scorecard map
-  if (!state.values || typeof state.values !== 'object') return false;
   for (const k of Object.keys(state.values)) {
     const v = state.values[k];
     if (!v || typeof v !== 'object') return false;
     if (typeof v.name !== 'string' || v.name.length > 100) return false;
-    if (typeof v.score !== 'number') return false;
+    if (typeof v.score !== 'number' || v.score < 0 || v.score > 1000) return false;
   }
 
   // Validate superpowers map
-  if (!state.superpowers || typeof state.superpowers !== 'object') return false;
   for (const k of Object.keys(state.superpowers)) {
     const p = state.superpowers[k];
     if (!p || typeof p !== 'object') return false;
-    if (typeof p.name !== 'string') return false;
-    if (typeof p.description !== 'string') return false;
-    if (typeof p.duration !== 'number') return false;
+    if (typeof p.name !== 'string' || p.name.length > 100) return false;
+    if (typeof p.description !== 'string' || p.description.length > 300) return false;
+    if (typeof p.duration !== 'number' || p.duration < 1 || p.duration > 120) return false;
+  }
+
+  // ISO 8601 timestamp regex helper
+  const isoRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
+
+  // Validate tasks
+  const allowedTaskKeys = [
+    'id', 'text', 'quadrant', 'status', 'type', 'createdAt', 
+    'completedAt', 'updatedAt', 'q1TargetTime', 'deadline', 
+    'details', 'subtasks', 'timeConsumed', 'weaponCategory', 
+    'valueCategory', 'superpowerCategory'
+  ];
+
+  for (const task of state.tasks) {
+    if (!task || typeof task !== 'object') return false;
+    
+    // Ensure no unexpected properties are hidden in tasks
+    for (const key of Object.keys(task)) {
+      if (!allowedTaskKeys.includes(key)) return false;
+    }
+
+    if (typeof task.id !== 'string' || !task.id) return false;
+    if (typeof task.text !== 'string' || task.text.length > 500) return false;
+    if (!['inbox', 'q1', 'q2', 'q3', 'q4'].includes(task.quadrant)) return false;
+    if (!['active', 'completed'].includes(task.status)) return false;
+    if (!['general', 'weapon', 'value', 'superpower'].includes(task.type)) return false;
+    
+    // Date schema compliance checks
+    if (task.createdAt && (typeof task.createdAt !== 'string' || !isoRegex.test(task.createdAt))) return false;
+    if (task.updatedAt && (typeof task.updatedAt !== 'string' || !isoRegex.test(task.updatedAt))) return false;
+    if (task.completedAt && (typeof task.completedAt !== 'string' || !isoRegex.test(task.completedAt))) return false;
+    if (task.deadline && (typeof task.deadline !== 'string' || !isoRegex.test(task.deadline))) return false;
+    if (task.q1TargetTime && (typeof task.q1TargetTime !== 'string' || !isoRegex.test(task.q1TargetTime))) return false;
+
+    // Optional details
+    if (task.details !== undefined && (task.details !== null && typeof task.details !== 'string')) return false;
+    if (task.timeConsumed !== undefined && (typeof task.timeConsumed !== 'number' || task.timeConsumed < 0)) return false;
+
+    // Category linkage constraints
+    if (task.type === 'weapon' && task.weaponCategory && !state.weapons[task.weaponCategory]) return false;
+    if (task.type === 'value' && task.valueCategory && !state.values[task.valueCategory]) return false;
+    if (task.type === 'superpower' && task.superpowerCategory && !state.superpowers[task.superpowerCategory]) return false;
+
+    // Optional subtasks array
+    if (task.subtasks !== undefined) {
+      if (!Array.isArray(task.subtasks)) return false;
+      if (task.subtasks.length > 100) return false;
+      
+      const allowedSubtaskKeys = ['id', 'text', 'completed'];
+      for (const sub of task.subtasks) {
+        if (!sub || typeof sub !== 'object') return false;
+        
+        for (const subKey of Object.keys(sub)) {
+          if (!allowedSubtaskKeys.includes(subKey)) return false;
+        }
+
+        if (typeof sub.id !== 'string' || !sub.id) return false;
+        if (typeof sub.text !== 'string' || sub.text.length > 200) return false;
+        if (typeof sub.completed !== 'boolean') return false;
+      }
+    }
   }
 
   // Validate recharge state

@@ -12,20 +12,21 @@ The top-level structure of the JSON database.
 | Field | Data Type | Description |
 | :--- | :--- | :--- |
 | `users` | Object | Key-value dictionary where keys are lowercase usernames and values are user documents. |
-| `sessions` | Object | Map of active session token strings to their corresponding usernames. |
+| `sessions` | Object | Map of active session token strings to their corresponding session metadata details. |
 
 ### 2. User Document Schema
 Represents a user account and their isolated workspace state.
 
 | Field | Data Type | Description |
 | :--- | :--- | :--- |
-| `password` | String | Plain-text password string (traditional validation fallback). |
+| `password` | String | Salted Scrypt hash in `salt:hash` representation. Plaintext is never stored. |
 | `state` | Object | Workspace state payload containing tasks, scores, and active timers. |
 
 ### 3. State Schema (Nested under User)
 
 | Field | Data Type | Description |
 | :--- | :--- | :--- |
+| `version` | Number | Optimistic Concurrency Control (OCC) revision count. Auto-incremented on write. |
 | `energy` | Number | User stamina battery level (ranges from 0 to 100). |
 | `activeFocusTaskId` | String \| Null | ID of the task currently being tracked by the focus timer. |
 | `tasks` | Array | Collection of Task objects. |
@@ -76,7 +77,7 @@ Represents a user account and their isolated workspace state.
 * **`deadline`** (String, ISO 8601 \| Null): Overall target deadline.
 * **`details`** (String): Custom description notes.
 * **`subtasks`** (Array): Checklist item objects containing `{ id: String, text: String, completed: Boolean }`.
-* **`timeConsumed`** (Number): Accumulated focus seconds tracked on this task.
+* **`timeConsumed`** (Number): Focus seconds tracked on this task.
 * **`weaponCategory` / `valueCategory` / `superpowerCategory`** (String, Conditional): Subcategory keys mapping task type triggers.
 
 ---
@@ -99,5 +100,5 @@ A single task has a child collection of subtasks. Checking or deleting subtasks 
 
 ### 3. Task to Module Mappings
 * **Task to Weapon (Many-to-1):** Linking a task to a weapon sets focus tracking intervals based on that weapon's `duration`.
-* **Task to Value (Many-to-1):** Linking a task to a value and completing it inside the `q2` quadrant adds **+10** points to the user's value score.
+* **Task to Value (Many-to-1):** Linking a task to a value and completing it inside the `q2` quadrant adds points to the user's value score.
 * **Task to Superpower (Many-to-1):** Linking a task to a superpower and completing it triggers recovery countdowns.

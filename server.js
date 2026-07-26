@@ -20,7 +20,7 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1 || isLocalIp || isHfSpace) {
       return callback(null, true);
     }
-    return callback(new Error('CORS policy violation'), false);
+    return callback(null, false);
   },
   credentials: true
 }));
@@ -35,11 +35,15 @@ dbModule.readDb();
 
 const localIp = ipModule.getLocalIpAddress();
 
-app.listen(config.PORT, () => {
-  console.log(`=========================================`);
-  console.log(`OPERATOR MATRIX RUNNING`);
-  console.log(`Local Access: http://localhost:${config.PORT}`);
-  console.log(`Mobile Access: http://${localIp}:${config.PORT}`);
-  console.log(`Make sure phone is connected to same Wi-Fi!`);
-  console.log(`=========================================`);
-});
+if (require.main === module) {
+  app.listen(config.PORT, () => {
+    console.log(`=========================================`);
+    console.log(`OPERATOR MATRIX RUNNING`);
+    console.log(`Local Access: http://localhost:${config.PORT}`);
+    console.log(`Mobile Access: http://${localIp}:${config.PORT}`);
+    console.log(`Make sure phone is connected to same Wi-Fi!`);
+    console.log(`=========================================`);
+  });
+}
+
+module.exports = app;

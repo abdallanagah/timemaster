@@ -61,7 +61,7 @@ This document outlines the software architecture, file organization, coding stan
 * **Client Javascript Controller (`public/app.js`):** Maximum **2500 lines**. Focuses on front-end rendering, state sync, and timer ticks.
 
 ### 3. Coding Style Conventions
-* **Variables & Functions:** camelCase names (e.g. `getSessionUser`, `activeSessions`).
+* **Variables & Functions:** camelCase names (e.g. `getSessionUser`, `registerUser`).
 * **Constants & Configuration:** UPPER_SNAKE_CASE (e.g. `DB_PATH`, `PORT`).
 * **Asynchronous Calls:** Use `async/await` syntax instead of promise chains (`.then`). Implement `try/catch` wrapper blocks on all I/O, file read/write, or network calls to prevent unhandled exceptions.
 * **UI Manipulation:** Use native browser DOM manipulation APIs. Avoid heavy external frontend frameworks unless requested, keeping dependencies lightweight.

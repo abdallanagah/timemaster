@@ -12,6 +12,7 @@ The top-level structure of the JSON database.
 | Field | Data Type | Description |
 | :--- | :--- | :--- |
 | `users` | Object | Key-value dictionary where keys are lowercase usernames and values are user documents. |
+| `sessions` | Object | Map of active session token strings to their corresponding usernames. |
 
 ### 2. User Document Schema
 Represents a user account and their isolated workspace state.

@@ -1,18 +1,15 @@
 /**
  * TimeMaster Authentication Module
  * Handles session token verification, registration, login credentials checks,
- * and maintains active login session state maps.
+ * and maintains persistent sessions inside the database file.
  */
 
 const crypto = require('crypto');
 const dbModule = require('./db');
 
-// In-memory mapping of active session tokens to normalized usernames
-const activeSessions = {};
-
 /**
  * Resolves the username associated with the request's Authorization Bearer token.
- * Supports legacy local accounts, mock developer accounts, and standard hex session tokens.
+ * Supports developer mock bypass and persistent session mappings stored in db.json.
  * 
  * @param {Object} req - Express request object.
  * @returns {String|Null} The resolved username, or null if unauthorized.
@@ -33,8 +30,10 @@ function getSessionUser(req) {
         return token.replace('auth-token-', '');
       }
 
-      // Check active cryptographically generated sessions map
-      return activeSessions[token] || null;
+      // Query persistent sessions from db.json
+      const db = dbModule.readDb();
+      db.sessions = db.sessions || {};
+      return db.sessions[token] || null;
     }
   } catch (error) {
     console.error("Error resolving session user from headers:", error);
@@ -44,7 +43,7 @@ function getSessionUser(req) {
 
 /**
  * Registers a new user account inside the database state.
- * Normalized username to lowercase, seeds default tasks and triggers, and generates a session.
+ * Normalized username to lowercase, seeds default tasks, and registers session.
  * 
  * @param {String} username - Plain username.
  * @param {String} password - Plain password.
@@ -75,11 +74,13 @@ function registerUser(username, password) {
       state: dbModule.getDefaultUserState()
     };
     
+    // Create and save session token in db
+    db.sessions = db.sessions || {};
+    const token = crypto.randomBytes(24).toString('hex');
+    db.sessions[token] = normalizedUser;
+    
     const success = dbModule.writeDb(db);
     if (success) {
-      // Issue cryptographically secure 24-byte hex token
-      const token = crypto.randomBytes(24).toString('hex');
-      activeSessions[token] = normalizedUser;
       return { status: "success", token };
     }
   } catch (error) {
@@ -91,7 +92,7 @@ function registerUser(username, password) {
 
 /**
  * Authenticates a user by credentials verification.
- * Generates a session token upon successful validation.
+ * Generates and saves a session token inside the persistent store upon success.
  * 
  * @param {String} username - Plain username.
  * @param {String} password - Plain password.
@@ -111,9 +112,14 @@ function loginUser(username, password) {
     
     // Verify password equality
     if (user && user.password === password) {
+      db.sessions = db.sessions || {};
       const token = crypto.randomBytes(24).toString('hex');
-      activeSessions[token] = normalizedUser;
-      return { status: "success", token };
+      db.sessions[token] = normalizedUser;
+      
+      const success = dbModule.writeDb(db);
+      if (success) {
+        return { status: "success", token };
+      }
     }
   } catch (error) {
     console.error(`Login error for user ${normalizedUser}:`, error);
@@ -123,7 +129,6 @@ function loginUser(username, password) {
 }
 
 module.exports = {
-  activeSessions,
   getSessionUser,
   registerUser,
   loginUser

@@ -709,6 +709,25 @@ function initAuthUI() {
   if (authForm) {
     authForm.onsubmit = handleAuthSubmit;
   }
+
+  const btnDemo = document.getElementById('auth-demo-btn');
+  if (btnDemo) {
+    btnDemo.onclick = startDemoMode;
+  }
+}
+
+function startDemoMode() {
+  currentUser = { id: 'demo-user', name: 'Demo Operator', email: 'demo@timemaster.local', avatar: '' };
+  sessionStorage.setItem('timemaster-token', 'demo-mode-token');
+  sessionStorage.setItem('timemaster-username', 'demo-user');
+  
+  const loginOverlay = document.getElementById('login-overlay');
+  if (loginOverlay) loginOverlay.classList.add('hidden');
+  const dashboard = document.querySelector('.dashboard-container');
+  if (dashboard) dashboard.classList.remove('hidden');
+  
+  updateHeaderUserProfile();
+  fetchState();
 }
 
 function resetAuthAlerts() {

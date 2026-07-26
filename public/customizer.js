@@ -313,7 +313,7 @@
 
   // 4. Open Customizer Modal Panel
   function openCustomizer() {
-    if (!window.state) {
+    if (typeof state === 'undefined') {
       console.error("State object is unavailable.");
       return;
     }
@@ -353,8 +353,8 @@
     const weaponsList = document.createElement('div');
     weaponsList.className = 'customizer-row-list';
 
-    Object.keys(window.state.weapons).forEach(key => {
-      const weapon = window.state.weapons[key];
+    Object.keys(state.weapons).forEach(key => {
+      const weapon = state.weapons[key];
       const card = document.createElement('div');
       card.className = 'customizer-item-card';
       card.dataset.key = key;
@@ -393,8 +393,8 @@
     const valuesList = document.createElement('div');
     valuesList.className = 'customizer-row-list';
 
-    Object.keys(window.state.values).forEach(key => {
-      const value = window.state.values[key];
+    Object.keys(state.values).forEach(key => {
+      const value = state.values[key];
       const row = document.createElement('div');
       row.className = 'customizer-item-card';
       row.dataset.key = key;
@@ -476,7 +476,7 @@
       const newKey = `val_${timestamp}`;
       
       // Update state object
-      window.state.values[newKey] = {
+      state.values[newKey] = {
         name: "New Custom Value",
         score: 0
       };
@@ -491,7 +491,7 @@
   // 8. Delete Value Row
   function deleteValueItem(key) {
     try {
-      delete window.state.values[key];
+      delete state.values[key];
       renderModalContent();
     } catch (err) {
       console.error("Error deleting value:", err);
@@ -503,14 +503,14 @@
     if (!confirm("Are you sure you want to restore default weapons and values? This will override custom settings.")) return;
     try {
       // Revert weapons to standard
-      window.state.weapons = {
+      state.weapons = {
         deepFocus: { name: "Deep Focus", description: "Custom concentration block & break", active: false, startedAt: null, duration: 25, breakDuration: 5, sessionType: "focus", breakStartedAt: null },
         inboxZero: { name: "Inbox Zero Speedrun", description: "15-minute aggressive email/task processing", active: false, startedAt: null, duration: 15 },
         digitalDetox: { name: "Off-grid Mode", description: "120 minutes of offline system operation", active: false, startedAt: null, duration: 120 }
       };
 
       // Revert values to standard
-      window.state.values = {
+      state.values = {
         health: { name: "Health & Vitality", score: 0 },
         mastery: { name: "Skill Mastery", score: 0 },
         creation: { name: "Creative Output", score: 0 },
@@ -522,10 +522,10 @@
       cleanOrphanedTasks();
 
       // Trigger sync saves
-      if (window.saveState) window.saveState();
-      if (window.renderWeapons) window.renderWeapons();
-      if (window.renderValues) window.renderValues();
-      if (window.renderTasks) window.renderTasks();
+      if (typeof saveState !== 'undefined') saveState();
+      if (typeof renderWeapons !== 'undefined') renderWeapons();
+      if (typeof renderValues !== 'undefined') renderValues();
+      if (typeof renderTasks !== 'undefined') renderTasks();
 
       closeCustomizer();
     } catch (err) {
@@ -535,13 +535,13 @@
 
   // 10. Scan and Clean tasks holding deleted categories
   function cleanOrphanedTasks() {
-    if (!window.state.tasks) return;
-    window.state.tasks.forEach(task => {
-      if (task.type === 'value' && !window.state.values[task.valueCategory]) {
+    if (!state.tasks) return;
+    state.tasks.forEach(task => {
+      if (task.type === 'value' && !state.values[task.valueCategory]) {
         task.type = 'general';
         delete task.valueCategory;
       }
-      if (task.type === 'weapon' && !window.state.weapons[task.weaponCategory]) {
+      if (task.type === 'weapon' && !state.weapons[task.weaponCategory]) {
         task.type = 'general';
         delete task.weaponCategory;
       }
@@ -559,15 +559,15 @@
         const descIn = card.querySelector('.weapon-desc-in');
         const durIn = card.querySelector('.weapon-dur-in');
         
-        if (window.state.weapons[key]) {
-          window.state.weapons[key].name = nameIn.value.trim() || window.state.weapons[key].name;
-          window.state.weapons[key].description = descIn.value.trim() || window.state.weapons[key].description;
-          window.state.weapons[key].duration = parseInt(durIn.value) || 25;
+        if (state.weapons[key]) {
+          state.weapons[key].name = nameIn.value.trim() || state.weapons[key].name;
+          state.weapons[key].description = descIn.value.trim() || state.weapons[key].description;
+          state.weapons[key].duration = parseInt(durIn.value) || 25;
           
           if (key === 'deepFocus') {
             const breakIn = card.querySelector('.weapon-break-in');
             if (breakIn) {
-              window.state.weapons[key].breakDuration = parseInt(breakIn.value) || 5;
+              state.weapons[key].breakDuration = parseInt(breakIn.value) || 5;
             }
           }
         }
@@ -590,16 +590,16 @@
       });
 
       // Apply to State
-      window.state.values = updatedValues;
+      state.values = updatedValues;
 
       // Clean up any tasks associated with deleted values
       cleanOrphanedTasks();
 
       // Trigger sync persistence and render updates
-      if (window.saveState) window.saveState();
-      if (window.renderWeapons) window.renderWeapons();
-      if (window.renderValues) window.renderValues();
-      if (window.renderTasks) window.renderTasks();
+      if (typeof saveState !== 'undefined') saveState();
+      if (typeof renderWeapons !== 'undefined') renderWeapons();
+      if (typeof renderValues !== 'undefined') renderValues();
+      if (typeof renderTasks !== 'undefined') renderTasks();
 
       closeCustomizer();
     } catch (err) {

@@ -7,7 +7,23 @@ const dbModule = require('./modules/db');
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    const isLocalIp = /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(origin);
+    const isHfSpace = /^https:\/\/.*\.hf\.space$/.test(origin);
+    if (allowedOrigins.indexOf(origin) !== -1 || isLocalIp || isHfSpace) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS policy violation'), false);
+  },
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.static(config.STATIC_DIR));
 

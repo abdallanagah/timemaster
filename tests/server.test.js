@@ -25,7 +25,7 @@ try {
   const db = dbModule.readDb();
   assert.ok(db.users, "Database must seed a 'users' parent node");
   assert.ok(db.users.default, "Database must seed 'default' user state");
-  assert.strictEqual(db.users.default.password, "2000", "Default password should be initialized to '2000'");
+  assert.ok(authModule.verifyPassword("2000", db.users.default.password), "Default password should be verified as '2000'");
   assert.ok(db.users.default.state.tasks, "Default state should contain initialized tasks");
   console.log("✓ Test 1 Passed!");
 

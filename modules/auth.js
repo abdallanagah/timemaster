@@ -1,40 +1,104 @@
 /**
  * TimeMaster Authentication Module
  * Handles session token verification, registration, login credentials checks,
- * and maintains persistent sessions inside the database file.
+ * Scrypt-based password hashing, session expiry, and token revocation.
  */
 
 const crypto = require('crypto');
 const dbModule = require('./db');
 
+// Session lifespan duration (e.g. 2 hours in milliseconds)
+const SESSION_LIFESPAN_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Generates a CPU-hard Scrypt password hash with a random salt.
+ * 
+ * @param {String} password - Plain text password.
+ * @returns {String} The formatted salt:hash string.
+ */
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+/**
+ * Compares plain password against stored hash. Falls back to plain text check.
+ * 
+ * @param {String} password - Input password.
+ * @param {String} storedPassword - Database hashed or plain password.
+ * @returns {Boolean} True if password matches.
+ */
+function verifyPassword(password, storedPassword) {
+  if (!storedPassword) return false;
+  
+  // Legacy plain-text fallback check
+  if (!storedPassword.includes(':')) {
+    return password === storedPassword;
+  }
+  
+  const [salt, hash] = storedPassword.split(':');
+  const verifyHash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return verifyHash === hash;
+}
+
+/**
+ * Extracts session token string from headers.
+ * 
+ * @param {Object} req - Express request.
+ * @returns {String|Null} The token string, or null.
+ */
+function getSessionToken(req) {
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+  return null;
+}
+
 /**
  * Resolves the username associated with the request's Authorization Bearer token.
- * Supports developer mock bypass and persistent session mappings stored in db.json.
+ * Validates expiration limits and cleans up stale sessions dynamically.
  * 
- * @param {Object} req - Express request object.
- * @returns {String|Null} The resolved username, or null if unauthorized.
+ * @param {Object} req - Express request.
+ * @returns {String|Null} The username or null.
  */
 function getSessionUser(req) {
   try {
-    const authHeader = req.headers['authorization'];
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
+    const token = getSessionToken(req);
+    if (!token) return null;
 
-      // Support developer zero-setup mock authentication bypass
+    // Support developer zero-setup mock authentication bypass (development ONLY)
+    if (process.env.NODE_ENV === 'development') {
       if (token.startsWith('mock-')) {
         return token.replace('mock-', '');
       }
-
-      // Maintain backward compatibility with legacy token profiles
       if (token.startsWith('auth-token-')) {
         return token.replace('auth-token-', '');
       }
-
-      // Query persistent sessions from db.json
-      const db = dbModule.readDb();
-      db.sessions = db.sessions || {};
-      return db.sessions[token] || null;
     }
+
+    const db = dbModule.readDb();
+    db.sessions = db.sessions || {};
+    const sessionObj = db.sessions[token];
+
+    if (!sessionObj) return null;
+
+    // Support legacy flat sessions (string values)
+    if (typeof sessionObj === 'string') {
+      return sessionObj;
+    }
+
+    // Check expiration limits
+    const expiresAt = sessionObj.expiresAt ? new Date(sessionObj.expiresAt) : null;
+    if (expiresAt && new Date() > expiresAt) {
+      // Clean up expired session in database
+      delete db.sessions[token];
+      dbModule.writeDb(db);
+      return null;
+    }
+
+    return sessionObj.username;
   } catch (error) {
     console.error("Error resolving session user from headers:", error);
   }
@@ -42,8 +106,28 @@ function getSessionUser(req) {
 }
 
 /**
+ * Revokes a session token from the persistent store (Logout).
+ * 
+ * @param {String} token - Session token to revoke.
+ * @returns {Boolean} True if successfully removed.
+ */
+function revokeSession(token) {
+  try {
+    const db = dbModule.readDb();
+    db.sessions = db.sessions || {};
+    if (db.sessions[token]) {
+      delete db.sessions[token];
+      return dbModule.writeDb(db);
+    }
+  } catch (error) {
+    console.error("Error revoking session token:", error);
+  }
+  return false;
+}
+
+/**
  * Registers a new user account inside the database state.
- * Normalized username to lowercase, seeds default tasks, and registers session.
+ * Normalized username to lowercase, hashes password, and saves session.
  * 
  * @param {String} username - Plain username.
  * @param {String} password - Plain password.
@@ -68,16 +152,19 @@ function registerUser(username, password) {
       return { status: "error", code: 400, message: "Username already exists" };
     }
     
-    // Seed new user document
+    // Seed new user document with hashed password
     db.users[normalizedUser] = {
-      password: password,
+      password: hashPassword(password),
       state: dbModule.getDefaultUserState()
     };
     
-    // Create and save session token in db
+    // Create and save session token
     db.sessions = db.sessions || {};
     const token = crypto.randomBytes(24).toString('hex');
-    db.sessions[token] = normalizedUser;
+    db.sessions[token] = {
+      username: normalizedUser,
+      expiresAt: new Date(Date.now() + SESSION_LIFESPAN_MS).toISOString()
+    };
     
     const success = dbModule.writeDb(db);
     if (success) {
@@ -92,7 +179,7 @@ function registerUser(username, password) {
 
 /**
  * Authenticates a user by credentials verification.
- * Generates and saves a session token inside the persistent store upon success.
+ * Generates, expires, and saves session tokens. Upgrades plain-text legacy passwords automatically.
  * 
  * @param {String} username - Plain username.
  * @param {String} password - Plain password.
@@ -110,11 +197,19 @@ function loginUser(username, password) {
     const db = dbModule.readDb();
     const user = db.users[normalizedUser];
     
-    // Verify password equality
-    if (user && user.password === password) {
+    // Verify password hashing
+    if (user && verifyPassword(password, user.password)) {
+      // Upgrade plain-text password to Scrypt automatically
+      if (!user.password.includes(':')) {
+        user.password = hashPassword(password);
+      }
+
       db.sessions = db.sessions || {};
       const token = crypto.randomBytes(24).toString('hex');
-      db.sessions[token] = normalizedUser;
+      db.sessions[token] = {
+        username: normalizedUser,
+        expiresAt: new Date(Date.now() + SESSION_LIFESPAN_MS).toISOString()
+      };
       
       const success = dbModule.writeDb(db);
       if (success) {
@@ -129,7 +224,11 @@ function loginUser(username, password) {
 }
 
 module.exports = {
+  getSessionToken,
   getSessionUser,
+  revokeSession,
   registerUser,
-  loginUser
+  loginUser,
+  hashPassword,
+  verifyPassword
 };

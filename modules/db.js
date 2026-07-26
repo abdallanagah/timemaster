@@ -1,4 +1,5 @@
 const fs = require('fs');
+const crypto = require('crypto');
 const config = require('../config/server.config');
 
 // Default User State Generator
@@ -33,10 +34,19 @@ function getDefaultUserState() {
 function readDb() {
   try {
     if (!fs.existsSync(config.DB_PATH)) {
+      const salt1 = crypto.randomBytes(16).toString('hex');
+      const hash1 = crypto.scryptSync("2000", salt1, 64).toString('hex');
+      const salt2 = crypto.randomBytes(16).toString('hex');
+      const hash2 = crypto.scryptSync("2000", salt2, 64).toString('hex');
+
       const initialDb = { 
         users: { 
           default: {
-            password: "2000",
+            password: `${salt1}:${hash1}`,
+            state: getDefaultUserState()
+          },
+          abdalla: {
+            password: `${salt2}:${hash2}`,
             state: getDefaultUserState()
           }
         } 
@@ -128,10 +138,95 @@ function saveUserState(userId, userState) {
   return writeDb(db);
 }
 
+function validateStateSchema(state) {
+  if (!state || typeof state !== 'object') return false;
+
+  const requiredKeys = ['energy', 'activeFocusTaskId', 'tasks', 'weapons', 'superpowers', 'rechargeState', 'values'];
+  const stateKeys = Object.keys(state);
+
+  // Check that no unknown keys exist at the root
+  for (const key of stateKeys) {
+    if (!requiredKeys.includes(key)) return false;
+  }
+
+  // Check that all required keys are present
+  for (const key of requiredKeys) {
+    if (!stateKeys.includes(key)) return false;
+  }
+
+  // Type checks
+  if (typeof state.energy !== 'number' || state.energy < 0 || state.energy > 100) return false;
+  if (state.activeFocusTaskId !== null && typeof state.activeFocusTaskId !== 'string') return false;
+  if (!Array.isArray(state.tasks)) return false;
+  if (state.tasks.length > 1000) return false; // Anti DoS limit
+
+  // Validate tasks
+  for (const task of state.tasks) {
+    if (!task || typeof task !== 'object') return false;
+    if (typeof task.id !== 'string' || !task.id) return false;
+    if (typeof task.text !== 'string' || task.text.length > 500) return false;
+    if (!['inbox', 'q1', 'q2', 'q3', 'q4'].includes(task.quadrant)) return false;
+    if (!['active', 'completed'].includes(task.status)) return false;
+    if (!['general', 'weapon', 'value', 'superpower'].includes(task.type)) return false;
+    
+    // Optional details
+    if (task.details !== undefined && (task.details !== null && typeof task.details !== 'string')) return false;
+    
+    // Optional subtasks array
+    if (task.subtasks !== undefined) {
+      if (!Array.isArray(task.subtasks)) return false;
+      if (task.subtasks.length > 100) return false;
+      for (const sub of task.subtasks) {
+        if (!sub || typeof sub !== 'object') return false;
+        if (typeof sub.id !== 'string' || !sub.id) return false;
+        if (typeof sub.text !== 'string' || sub.text.length > 200) return false;
+        if (typeof sub.completed !== 'boolean') return false;
+      }
+    }
+  }
+
+  // Validate weapons configuration map
+  if (!state.weapons || typeof state.weapons !== 'object') return false;
+  for (const k of Object.keys(state.weapons)) {
+    const w = state.weapons[k];
+    if (!w || typeof w !== 'object') return false;
+    if (typeof w.name !== 'string' || w.name.length > 100) return false;
+    if (typeof w.description !== 'string' || w.description.length > 300) return false;
+    if (typeof w.active !== 'boolean') return false;
+    if (typeof w.duration !== 'number') return false;
+  }
+
+  // Validate values scorecard map
+  if (!state.values || typeof state.values !== 'object') return false;
+  for (const k of Object.keys(state.values)) {
+    const v = state.values[k];
+    if (!v || typeof v !== 'object') return false;
+    if (typeof v.name !== 'string' || v.name.length > 100) return false;
+    if (typeof v.score !== 'number') return false;
+  }
+
+  // Validate superpowers map
+  if (!state.superpowers || typeof state.superpowers !== 'object') return false;
+  for (const k of Object.keys(state.superpowers)) {
+    const p = state.superpowers[k];
+    if (!p || typeof p !== 'object') return false;
+    if (typeof p.name !== 'string') return false;
+    if (typeof p.description !== 'string') return false;
+    if (typeof p.duration !== 'number') return false;
+  }
+
+  // Validate recharge state
+  if (!state.rechargeState || typeof state.rechargeState !== 'object') return false;
+  if (typeof state.rechargeState.active !== 'boolean') return false;
+
+  return true;
+}
+
 module.exports = {
   getDefaultUserState,
   readDb,
   writeDb,
   getUserState,
-  saveUserState
+  saveUserState,
+  validateStateSchema
 };

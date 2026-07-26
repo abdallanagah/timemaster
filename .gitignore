@@ -4,3 +4,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 hf_deploy/
+db.json
+db.json.tmp
+test-db.json
+tests/test-db.json

@@ -1,5 +1,15 @@
 // The Operator Matrix - Advanced App Logic
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 let state = {
   energy: 80,
   tasks: [],
@@ -439,7 +449,12 @@ function mergeTasks(serverTasks) {
 // Reconnect and reconcile offline client changes with server state
 async function reconcileOfflineState() {
   try {
-    const res = await fetch('/api/state');
+    const token = sessionStorage.getItem('timemaster-token');
+    const res = await fetch('/api/state', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     if (!res.ok) throw new Error("Reconciliation fetch failed");
     const serverData = await res.json();
     
@@ -458,7 +473,8 @@ async function reconcileOfflineState() {
     const saveRes = await fetch('/api/state', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(state)
     });
@@ -1350,10 +1366,10 @@ function renderAssociationInfoCard(taskId) {
   container.innerHTML = `
     <div class="association-card-header">
       <i data-lucide="${icon}"></i>
-      <strong>${title}</strong>
+      <strong>${escapeHtml(title)}</strong>
     </div>
     <div class="association-card-body">
-      <p class="association-desc">${desc}</p>
+      <p class="association-desc">${escapeHtml(desc)}</p>
       <p class="association-usage">${usage}</p>
     </div>
   `;
@@ -1484,7 +1500,7 @@ function createTaskDOMElement(task) {
   nameEditGroup.className = 'task-edit-name-group';
   nameEditGroup.innerHTML = `
     <label>Task Name</label>
-    <input type="text" class="task-edit-name-input" value="${task.text.replace(/"/g, '&quot;')}">
+    <input type="text" class="task-edit-name-input" value="${escapeHtml(task.text)}">
   `;
   const nameInput = nameEditGroup.querySelector('.task-edit-name-input');
   nameInput.addEventListener('change', (e) => {
@@ -1501,7 +1517,7 @@ function createTaskDOMElement(task) {
   notesCol.className = 'task-notes-col';
   notesCol.innerHTML = `
     <label>Notes & Description</label>
-    <textarea class="task-details-textarea" placeholder="Add task details/notes...">${task.details || ''}</textarea>
+    <textarea class="task-details-textarea" placeholder="Add task details/notes...">${escapeHtml(task.details)}</textarea>
   `;
   const notesTextarea = notesCol.querySelector('.task-details-textarea');
   notesTextarea.addEventListener('change', (e) => {
@@ -1760,8 +1776,8 @@ function renderWeapons() {
     
     if (key === 'deepFocus') {
       info.innerHTML = `
-        <h4>${weapon.name}</h4>
-        <p>${weapon.description}</p>
+        <h4>${escapeHtml(weapon.name)}</h4>
+        <p>${escapeHtml(weapon.description)}</p>
         <div class="pomodoro-inputs">
           <div class="pomo-input-grp">
             <span class="pomo-lbl">Focus:</span>
@@ -1777,8 +1793,8 @@ function renderWeapons() {
       `;
     } else {
       info.innerHTML = `
-        <h4>${weapon.name}</h4>
-        <p>${weapon.description} (${weapon.duration}m)</p>
+        <h4>${escapeHtml(weapon.name)}</h4>
+        <p>${escapeHtml(weapon.description)} (${weapon.duration}m)</p>
       `;
     }
     item.appendChild(info);
@@ -2014,7 +2030,7 @@ function renderValues() {
     
     item.innerHTML = `
       <div class="value-title-row">
-        <h4>${val.name}</h4>
+        <h4>${escapeHtml(val.name)}</h4>
         <span class="value-score-badge">${val.score} PTS</span>
       </div>
       <div class="value-progress-bg">
@@ -2037,8 +2053,8 @@ function renderSuperpowers() {
     const info = document.createElement('div');
     info.className = 'superpower-info';
     info.innerHTML = `
-      <h4>${power.name}</h4>
-      <p>${power.description} (${power.duration}m)</p>
+      <h4>${escapeHtml(power.name)}</h4>
+      <p>${escapeHtml(power.description)} (${power.duration}m)</p>
     `;
     item.appendChild(info);
 

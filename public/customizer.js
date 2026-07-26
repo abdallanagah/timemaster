@@ -3,6 +3,16 @@
  * Isolated module handling customization of Pomodoros, Focus durations, and dynamic Values scorecard targets.
  */
 (function() {
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // 1. Inject Stylesheets
   const styles = `
     .customizer-overlay {
@@ -362,11 +372,11 @@
       card.innerHTML = `
         <div class="customizer-form-grp">
           <label>Weapon Name</label>
-          <input type="text" class="customizer-txt-in weapon-name-in" value="${weapon.name.replace(/"/g, '&quot;')}">
+          <input type="text" class="customizer-txt-in weapon-name-in" value="${escapeHtml(weapon.name)}">
         </div>
         <div class="customizer-form-grp">
           <label>Description</label>
-          <input type="text" class="customizer-txt-in weapon-desc-in" value="${weapon.description.replace(/"/g, '&quot;')}">
+          <input type="text" class="customizer-txt-in weapon-desc-in" value="${escapeHtml(weapon.description)}">
         </div>
         <div class="customizer-flex-row">
           <div class="customizer-form-grp">
@@ -403,7 +413,7 @@
         <div class="customizer-flex-row">
           <div class="customizer-form-grp" style="flex: 1;">
             <label>Value Identifier / Name</label>
-            <input type="text" class="customizer-txt-in value-name-in" value="${value.name.replace(/"/g, '&quot;')}">
+            <input type="text" class="customizer-txt-in value-name-in" value="${escapeHtml(value.name)}">
           </div>
           <div class="customizer-form-grp">
             <label>Score (pts)</label>

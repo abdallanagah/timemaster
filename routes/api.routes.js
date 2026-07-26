@@ -1,7 +1,7 @@
 /**
  * TimeMaster Router Controller Module
  * Maps HTTP REST API resource requests directly to logical module services.
- * Implements strict security authorization guards for task state transfers.
+ * Implements strict security authorization guards and rate limiters.
  */
 
 const express = require('express');
@@ -11,11 +11,50 @@ const dbModule = require('../modules/db');
 const ipModule = require('../modules/ip');
 const config = require('../config/server.config');
 
+// Rate limiting in-memory bucket map
+const rateLimitMap = {};
+
+/**
+ * Custom rate limiting middleware to prevent brute-forcing and floods.
+ * 
+ * @param {Number} maxRequests - Max requests allowed in the window.
+ * @param {Number} windowMs - Time window in milliseconds.
+ * @returns {Function} Express middleware.
+ */
+function authRateLimiter(maxRequests, windowMs) {
+  return (req, res, next) => {
+    try {
+      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      const now = Date.now();
+      
+      if (!rateLimitMap[ip]) {
+        rateLimitMap[ip] = [];
+      }
+      
+      // Clean up records older than the window
+      rateLimitMap[ip] = rateLimitMap[ip].filter(timestamp => now - timestamp < windowMs);
+      
+      if (rateLimitMap[ip].length >= maxRequests) {
+        return res.status(429).json({ 
+          status: "error", 
+          message: "Too many attempts. Please try again later." 
+        });
+      }
+      
+      rateLimitMap[ip].push(now);
+      next();
+    } catch (err) {
+      console.error("Rate limiter failure, passing through defensively:", err);
+      next();
+    }
+  };
+}
+
 /**
  * POST /api/register
- * Enrolls a new user account partition.
+ * Enrolls a new user account partition. Rate-limited to max 10 requests / 15 minutes.
  */
-router.post('/register', (req, res) => {
+router.post('/register', authRateLimiter(10, 15 * 60 * 1000), (req, res) => {
   const { username, password } = req.body || {};
   const result = authModule.registerUser(username, password);
   if (result.status === 'success') {
@@ -27,15 +66,32 @@ router.post('/register', (req, res) => {
 
 /**
  * POST /api/login
- * Validates user credentials and issues session tokens.
+ * Validates user credentials and issues session tokens. Rate-limited to max 20 attempts / 5 minutes.
  */
-router.post('/login', (req, res) => {
+router.post('/login', authRateLimiter(20, 5 * 60 * 1000), (req, res) => {
   const { username, password } = req.body || {};
   const result = authModule.loginUser(username, password);
   if (result.status === 'success') {
     res.json(result);
   } else {
     res.status(result.code || 401).json(result);
+  }
+});
+
+/**
+ * POST /api/logout
+ * Revokes the active session token, logging the user out.
+ */
+router.post('/logout', (req, res) => {
+  try {
+    const token = authModule.getSessionToken(req);
+    if (token) {
+      authModule.revokeSession(token);
+    }
+    res.json({ status: "success", message: "Logged out successfully" });
+  } catch (error) {
+    console.error("Error during session logout:", error);
+    res.status(500).json({ status: "error", message: "Error clearing session details" });
   }
 });
 
@@ -59,6 +115,9 @@ router.post('/state', (req, res) => {
   const username = authModule.getSessionUser(req);
   if (!username) {
     return res.status(401).json({ status: "error", message: "Unauthorized session token" });
+  }
+  if (!dbModule.validateStateSchema(req.body)) {
+    return res.status(400).json({ status: "error", message: "Invalid workspace state payload schema" });
   }
   const success = dbModule.saveUserState(username, req.body);
   if (success) {

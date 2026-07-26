@@ -1,57 +1,67 @@
-# TimeMaster: System Architecture
+# TimeMaster: System Architecture & Code Design Guidelines
 
-TimeMaster is a high-contrast glassmorphic productivity dashboard designed to facilitate proactive task execution, energy tracking, and cognitive state recovery. It is architected as an offline-resilient, multi-tenant web application.
-
----
-
-## 🛠️ Technology Stack
-
-### 1. Frontend (Client-side)
-* **Languages:** HTML5 (semantic structure), CSS3 (premium glassmorphic styling, animations, themes), JavaScript (ES6+ modular controllers).
-* **Libraries:**
-  * **Lucide Icons:** Used for modern, clean vector iconography.
-  * **QRCode.js:** Dynamically generates local synchronization QR codes for mobile integrations.
-
-### 2. Backend (Server-side)
-* **Runtime:** Node.js
-* **Framework:** Express.js (lightweight router and static asset server)
-* **Modules:**
-  * `cors`: Enables secure cross-origin resource sharing.
-  * `crypto`: Standard Node library used to generate secure session tokens and password verifications.
-  * `fs` / `path` / `os`: File system operations, network interface diagnostics, and cross-platform path mapping.
-
-### 3. Database & Cache
-* **Local Backend Database:** File-based JSON database (`db.json`) for simple, lightweight multi-tenant data storage.
-* **Client-side Storage (Offline-First):**
-  * `localStorage`: Persists user accounts and isolated state databases for offline resilience.
-  * `sessionStorage`: Temporary session token store to verify active login state.
+This document outlines the software architecture, file organization, coding standards, and modular engineering guidelines for the **TimeMaster** web application.
 
 ---
 
-## 📂 File & Structural Organization
+## 🛠️ Technology Stack & Frameworks
+
+### 1. Backend Runtime & Libraries
+* **Platform:** Node.js (version >= 16.x)
+* **Web Framework:** Express.js (v4.19.x) - Handles static asset routing and REST endpoint mappings.
+* **Security:** Native Node `crypto` module - Performs token generation and secure session mapping.
+* **CORS:** `cors` middleware - Restricts or permits cross-origin requests.
+
+### 2. Frontend Interface
+* **Standard:** HTML5 (semantic layout) and Vanilla CSS3 (high-contrast glassmorphic design system).
+* **Vector Icons:** Lucide Icons library - Loaded dynamically via CDN.
+* **Integration Utilities:** QRCode.js library - Renders dynamic local IP synchronization QR targets.
+
+---
+
+## 📂 Modular File & Folder Organization
 
 ```markdown
-├── Dockerfile                   # container definition for deployment
-├── package.json                 # Node dependencies and boot scripts
-├── server.js                    # Express app entry point
+├── Dockerfile                   # Deployment container blueprint
+├── package.json                 # Execution scripts and dependencies list
+├── server.js                    # Bootstrap entry point (Imports only)
 ├── db.json                      # Persistent database file storing credentials and states
-├── config/                      # Environment variables and system configurations
-├── modules/                     # Reusable business logic (auth, db engine, ip utilities)
-├── routes/                      # Route handlers mapping requests to controllers
-├── tests/                       # Automated scripts to verify reliability
-└── public/                      # Static client assets served to browsers
+├── docs/                        # Specifications, database blueprints, and product guides
+│   ├── system_architecture.md
+│   ├── database_schema.md
+│   └── product_requirements.md
+├── config/                      # Isolated environment properties and file paths
+│   └── server.config.js
+├── modules/                     # Reusable business logic layers
+│   ├── db.js                  # Database read/writes and state initialization
+│   ├── auth.js                # Password verification and session mappings
+│   └── ip.js                  # Native IP query lookup interfaces
+├── routes/                      # Route controllers mapping REST resources
+│   └── api.routes.js
+├── tests/                       # Automated scripts verifying code functionality
+│   └── server.test.js
+└── public/                      # Static client-side web assets
     ├── index.html               # Main dashboard DOM layout
-    ├── style.css                # Glassmorphic themes and layout rules
-    └── app.js                   # Client router, timer managers, and API syncer
+    ├── style.css                # Visual themes and layout styles
+    └── app.js                   # Client-side state manager and timer loops
 ```
 
 ---
 
-## 🚀 Deployment & Resiliency Model
+## 📐 Modular Design & Code Style Rules
 
-### 1. Multi-Tenant Sync Isolation
-* **Online Mode:** The frontend makes HTTP requests to the local Node.js server. The server verifies session tokens and reads/writes state data from/to the isolated user sections inside `db.json`.
-* **Offline/Static Mode:** If the server is unreachable (such as on free Hugging Face hosting), the client falls back to client-side LocalStorage. Accounts and task states are stored locally in the user's browser, partitioned by username.
+### 1. Separation of Concerns (SoC)
+* **Zero Business Logic in Routes:** Files in `/routes/` must only extract input variables from requests, forward them to the correct `/modules/` service, and return matching HTTP status codes.
+* **Zero HTTP Context in Modules:** Files inside `/modules/` must be pure JavaScript functions. They must never references request (`req`) or response (`res`) Express instances, facilitating clean unit testing.
+* **No Database Operations in Entry Point:** The root `server.js` file must not contain raw database reads or writes; these must execute strictly inside `modules/db.js`.
 
-### 2. Cache Invalidation
-* Version query parameters (`?v=1.2.6`) are appended to `style.css` and `app.js` links inside `index.html` to automatically bust aggressive browser cache profiles on code re-deployments.
+### 2. File Length Threshold Constraints
+* **Entry Point (`server.js`):** Maximum **50 lines** of code. It must only boot middlewares, register route paths, and trigger the port listener.
+* **Controllers & Logic Modules (`/modules/`, `/routes/`):** Maximum **200 lines** per file. Large modules must be decomposed into sub-files.
+* **Client Javascript Controller (`public/app.js`):** Maximum **2500 lines**. Focuses on front-end rendering, state sync, and timer ticks.
+
+### 3. Coding Style Conventions
+* **Variables & Functions:** camelCase names (e.g. `getSessionUser`, `activeSessions`).
+* **Constants & Configuration:** UPPER_SNAKE_CASE (e.g. `DB_PATH`, `PORT`).
+* **Asynchronous Calls:** Use `async/await` syntax instead of promise chains (`.then`). Implement `try/catch` wrapper blocks on all I/O, file read/write, or network calls to prevent unhandled exceptions.
+* **UI Manipulation:** Use native browser DOM manipulation APIs. Avoid heavy external frontend frameworks unless requested, keeping dependencies lightweight.

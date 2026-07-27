@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const config = require('./config/server.config');
 const apiRouter = require('./routes/api.routes');
 const ipModule = require('./modules/ip');
@@ -26,6 +27,16 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.static(config.STATIC_DIR));
+
+// Explicit fallback to index.html for root path
+app.get('/', (req, res) => {
+  res.sendFile(path.join(config.STATIC_DIR, 'index.html'));
+});
+
+// Diagnostics health check route
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', mode: process.env.UPSTASH_REDIS_REST_URL ? 'cloud' : 'local' });
+});
 
 // Setup main API router
 app.use('/api', apiRouter);

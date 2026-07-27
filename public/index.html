@@ -194,6 +194,43 @@
     </div>
   </div>
 
+  <!-- About TimeMaster Modal Overlay -->
+  <div id="about-overlay" class="info-overlay hidden">
+    <div class="info-modal card" style="max-width: 550px;">
+      <div class="info-modal-header">
+        <h2><i data-lucide="sparkles"></i> ABOUT TIMEMASTER</h2>
+        <button id="close-about-btn" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-tab-content" style="padding-top: 15px;">
+        <h3>The Vision & Design</h3>
+        <p><strong>TimeMaster</strong> is an executive productivity dashboard built around a proactive four-quadrant priority matrix. It consolidates daily task lists, Pomodoro focus blocks ("Weapons"), and deep breathing guides ("Superpowers") into a unified, high-contrast command deck.</p>
+        
+        <h3 style="margin-top: 20px;">The Creator</h3>
+        <div class="user-profile-widget" style="background: rgba(255, 255, 255, 0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); display: flex; align-items: center; gap: 15px;">
+          <div class="user-avatar-placeholder" style="width: 48px; height: 48px; border-radius: 50%; font-size: 1.25rem;"><i data-lucide="user"></i></div>
+          <div>
+            <h4 style="margin: 0; color: #f8fafc; font-size: 1rem;">Abdalla Nagah</h4>
+            <span style="font-size: 0.8rem; color: var(--accent);">Market Research Executive at HVD</span>
+          </div>
+        </div>
+        <p style="margin-top: 10px; font-size: 0.85rem; color: #94a3b8;">Abdalla designed this matrix to help high-output operators master focus, eliminate noise (Q3/Q4), and cultivate structured habits for daily execution.</p>
+
+        <h3 style="margin-top: 20px;">How to Share with Friends</h3>
+        <ul class="manual-list" style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.5;">
+          <li><strong>1. Share Your Public Space Link:</strong> Send your friends your Hugging Face Space URL:
+            <br><a href="https://huggingface.co/spaces/abdallahvd/timemaster" target="_blank" style="color: var(--accent); text-decoration: underline; word-break: break-all;">https://huggingface.co/spaces/abdallahvd/timemaster</a>
+            <br>They can click <strong>"Demo / Offline Mode"</strong> to evaluate the dashboard instantly in their browser without installing anything!
+          </li>
+          <li><strong>2. Local Wi-Fi Sharing:</strong> Since the server runs on your machine, anyone connected to the same Wi-Fi network can visit your local server IP (e.g. <code>http://10.0.10.61:3000</code>). Click <strong>"Sync Phone"</strong> in your header to view your QR code!
+          </li>
+          <li><strong>3. Share the Codebase:</strong> Share the repository files. Your friends can boot up their own private offline servers instantly by running:
+            <br><code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">npm install</code> then <code style="background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">npm start</code>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Grid Container -->
   <div class="dashboard-container hidden">
     
@@ -226,6 +263,10 @@
         <button id="toggle-theme-btn" class="btn btn-icon" title="Toggle Light/Dark Theme">
           <i data-lucide="sun"></i>
           <span>Theme</span>
+        </button>
+        <button id="toggle-about-btn" class="btn btn-icon" title="About TimeMaster">
+          <i data-lucide="sparkles"></i>
+          <span>About</span>
         </button>
         <button id="toggle-info-btn" class="btn btn-icon" title="System Manual">
           <i data-lucide="info"></i>

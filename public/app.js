@@ -80,6 +80,9 @@ const cancelRechargeBtn = document.getElementById('cancel-recharge-btn');
 const toggleInfoBtn = document.getElementById('toggle-info-btn');
 const infoOverlay = document.getElementById('info-overlay');
 const closeInfoBtn = document.getElementById('close-info-btn');
+const toggleAboutBtn = document.getElementById('toggle-about-btn');
+const aboutOverlay = document.getElementById('about-overlay');
+const closeAboutBtn = document.getElementById('close-about-btn');
 const tabButtons = document.querySelectorAll('.tab-btn');
 const tabPanels = document.querySelectorAll('.tab-panel');
 
@@ -118,6 +121,14 @@ async function initApp() {
   toggleInfoBtn.addEventListener('click', () => infoOverlay.classList.remove('hidden'));
   closeInfoBtn.addEventListener('click', () => infoOverlay.classList.add('hidden'));
   setupManualTabs();
+
+  // About Overlay Handlers
+  if (toggleAboutBtn) {
+    toggleAboutBtn.addEventListener('click', () => aboutOverlay.classList.remove('hidden'));
+  }
+  if (closeAboutBtn) {
+    closeAboutBtn.addEventListener('click', () => aboutOverlay.classList.add('hidden'));
+  }
 
   // Archive Modal Handlers
   const btnToggleArchive = document.getElementById('toggle-archive-btn');

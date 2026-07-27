@@ -197,8 +197,19 @@ function loginUser(username, password) {
     const db = dbModule.readDb();
     const user = db.users[normalizedUser];
     
-    // Verify password hashing
-    if (user && verifyPassword(password, user.password)) {
+    // Verify password with dynamic ADMIN_PASSWORD environment override fallback
+    let isValid = false;
+    if (user) {
+      if (process.env.ADMIN_PASSWORD && password === process.env.ADMIN_PASSWORD && (normalizedUser === 'abdalla' || normalizedUser === 'default')) {
+        isValid = true;
+        // Automatically Scrypt-hash and persist the override password
+        user.password = hashPassword(password);
+      } else {
+        isValid = verifyPassword(password, user.password);
+      }
+    }
+    
+    if (isValid) {
       // Upgrade plain-text password to Scrypt automatically
       if (!user.password.includes(':')) {
         user.password = hashPassword(password);

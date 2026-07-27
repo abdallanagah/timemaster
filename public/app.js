@@ -130,6 +130,14 @@ async function initApp() {
     closeAboutBtn.addEventListener('click', () => aboutOverlay.classList.add('hidden'));
   }
 
+  // Archive Drawer Toggle Handlers
+  const btnToggleArchive = document.getElementById('toggle-archive-btn');
+  const btnCloseArchive = document.getElementById('archive-modal-close-btn');
+  if (btnToggleArchive) {
+    btnToggleArchive.addEventListener('click', toggleArchiveModal);
+  }
+  if (btnCloseArchive) {
+    btnCloseArchive.addEventListener('click', toggleArchiveModal);
   }
 
   // Close Archive Modal if clicked outside the container

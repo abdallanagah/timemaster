@@ -289,6 +289,21 @@ function loadFromLocalStorage() {
 async function fetchState() {
   try {
     const token = sessionStorage.getItem('timemaster-token');
+    if (token === 'demo-mode-token' || token === 'offline-session-token-abdalla') {
+      isOffline = true;
+      updateSyncStatusUI();
+      const cachedData = loadFromLocalStorage();
+      if (cachedData) {
+        state = cachedData;
+        renderTasks();
+        updateEnergyUI();
+        renderValues();
+        updateKpis();
+        renderWeapons();
+        renderSuperpowers();
+      }
+      return;
+    }
     const res = await fetch('/api/state', {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -379,6 +394,13 @@ async function fetchState() {
 async function saveState() {
   try {
     const token = sessionStorage.getItem('timemaster-token');
+    if (token === 'demo-mode-token' || token === 'offline-session-token-abdalla') {
+      saveToLocalStorage();
+      hasUnsavedChanges = false;
+      isOffline = true;
+      updateSyncStatusUI();
+      return;
+    }
     const res = await fetch('/api/state', {
       method: 'POST',
       headers: {

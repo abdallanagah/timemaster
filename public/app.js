@@ -130,14 +130,41 @@ async function initApp() {
     closeAboutBtn.addEventListener('click', () => aboutOverlay.classList.add('hidden'));
   }
 
-  // Archive Modal Handlers
-  const btnToggleArchive = document.getElementById('toggle-archive-btn');
-  const btnCloseArchive = document.getElementById('archive-modal-close-btn');
-  if (btnToggleArchive) {
-    btnToggleArchive.addEventListener('click', toggleArchiveModal);
   }
-  if (btnCloseArchive) {
-    btnCloseArchive.addEventListener('click', toggleArchiveModal);
+
+  // Close Archive Modal if clicked outside the container
+  const archiveOverlay = document.getElementById('archive-modal-overlay');
+  if (archiveOverlay) {
+    archiveOverlay.addEventListener('click', (e) => {
+      if (e.target === archiveOverlay) {
+        toggleArchiveModal();
+      }
+    });
+  }
+
+  // Hook up search filter and clear-all events in Archive modal
+  const archiveSearch = document.getElementById('archive-search-input');
+  if (archiveSearch) {
+    archiveSearch.addEventListener('input', (e) => {
+      renderArchivedTasks(e.target.value.trim());
+    });
+  }
+
+  const archiveClearAll = document.getElementById('archive-clear-all-btn');
+  if (archiveClearAll) {
+    archiveClearAll.addEventListener('click', () => {
+      const archivedTasksCount = state.tasks.filter(t => t.status === 'archived').length;
+      if (archivedTasksCount === 0) {
+        alert("The archive is already empty!");
+        return;
+      }
+      if (confirm(`Are you sure you want to permanently delete all ${archivedTasksCount} archived tasks? This action cannot be undone.`)) {
+        state.tasks = state.tasks.filter(t => t.status !== 'archived');
+        saveState();
+        renderTasks();
+        renderArchivedTasks();
+      }
+    });
   }
 
   // Start polling loops
@@ -1296,6 +1323,7 @@ function renderTasks() {
   addEmptyStateMessage(q3List, "Noise/Delegation clear.");
   addEmptyStateMessage(q4List, "The Void is empty.");
 
+  setupQuadrantHeaders();
   lucide.createIcons();
 }
 
@@ -1576,6 +1604,26 @@ function createTaskDOMElement(task) {
       toggleTaskFocus(task.id);
     });
     rightActions.appendChild(focusBtn);
+  }
+
+  // One-click Archive button for completed task cards
+  if (task.status === 'completed') {
+    const inlineArchiveBtn = document.createElement('button');
+    inlineArchiveBtn.className = 'btn-archive-task-card';
+    inlineArchiveBtn.title = 'Archive Task';
+    inlineArchiveBtn.innerHTML = '<i data-lucide="archive"></i>';
+    inlineArchiveBtn.style.background = 'none';
+    inlineArchiveBtn.style.border = 'none';
+    inlineArchiveBtn.style.color = 'var(--text-muted)';
+    inlineArchiveBtn.style.cursor = 'pointer';
+    inlineArchiveBtn.style.marginRight = '8px';
+    inlineArchiveBtn.style.display = 'flex';
+    inlineArchiveBtn.style.alignItems = 'center';
+    inlineArchiveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      archiveTask(task.id);
+    });
+    rightActions.appendChild(inlineArchiveBtn);
   }
 
   // Chevron expander for settings
@@ -1911,37 +1959,28 @@ function renderWeapons() {
     const info = document.createElement('div');
     info.className = 'weapon-info';
     
-    // Programmatically construct headers and descriptions using .textContent
-    const h4 = document.createElement('h4');
-    h4.textContent = weapon.name;
-    info.appendChild(h4);
-    
     if (key === 'deepFocus') {
-      const p = document.createElement('p');
-      p.textContent = weapon.description;
-      info.appendChild(p);
-      
-      const pomoInputs = document.createElement('div');
-      pomoInputs.className = 'pomodoro-inputs';
-      pomoInputs.innerHTML = `
-        <div class="pomo-input-grp">
-          <span class="pomo-lbl">Focus:</span>
-          <input type="number" id="focus-duration-input" min="1" max="120" class="pomo-num-input" ${weapon.active ? 'disabled' : ''}>
-          <span class="pomo-unit">m</span>
-        </div>
-        <div class="pomo-input-grp">
-          <span class="pomo-lbl">Break:</span>
-          <input type="number" id="break-duration-input" min="0" max="60" class="pomo-num-input" ${weapon.active ? 'disabled' : ''}>
-          <span class="pomo-unit">m</span>
+      info.innerHTML = `
+        <h4>${escapeHtml(weapon.name)}</h4>
+        <p>${escapeHtml(weapon.description)}</p>
+        <div class="pomodoro-inputs">
+          <div class="pomo-input-grp">
+            <span class="pomo-lbl">Focus:</span>
+            <input type="number" id="focus-duration-input" min="1" max="120" value="${weapon.duration || 25}" class="pomo-num-input" ${weapon.active ? 'disabled' : ''}>
+            <span class="pomo-unit">m</span>
+          </div>
+          <div class="pomo-input-grp">
+            <span class="pomo-lbl">Break:</span>
+            <input type="number" id="break-duration-input" min="0" max="60" value="${weapon.breakDuration !== undefined ? weapon.breakDuration : 5}" class="pomo-num-input" ${weapon.active ? 'disabled' : ''}>
+            <span class="pomo-unit">m</span>
+          </div>
         </div>
       `;
-      pomoInputs.querySelector('#focus-duration-input').value = weapon.duration || 25;
-      pomoInputs.querySelector('#break-duration-input').value = weapon.breakDuration !== undefined ? weapon.breakDuration : 5;
-      info.appendChild(pomoInputs);
     } else {
-      const p = document.createElement('p');
-      p.textContent = `${weapon.description} (${weapon.duration}m)`;
-      info.appendChild(p);
+      info.innerHTML = `
+        <h4>${escapeHtml(weapon.name)}</h4>
+        <p>${escapeHtml(weapon.description)} (${weapon.duration}m)</p>
+      `;
     }
     item.appendChild(info);
 
@@ -2377,15 +2416,20 @@ function archiveTask(id) {
 }
 
 // Render list of archived tasks inside overlay modal body
-function renderArchivedTasks() {
+function renderArchivedTasks(query = '') {
   const archivedList = document.getElementById('archived-tasks-list');
   if (!archivedList) return;
   
   archivedList.innerHTML = '';
-  const archivedTasks = state.tasks.filter(t => t.status === 'archived');
+  let archivedTasks = state.tasks.filter(t => t.status === 'archived');
+  
+  if (query) {
+    const qLower = query.toLowerCase();
+    archivedTasks = archivedTasks.filter(t => t.text.toLowerCase().includes(qLower));
+  }
   
   if (archivedTasks.length === 0) {
-    archivedList.innerHTML = '<div class="text-muted font-mono" style="text-align: center; font-size: 0.8rem; padding: 12px;">No archived tasks.</div>';
+    archivedList.innerHTML = `<div class="text-muted font-mono" style="text-align: center; font-size: 0.8rem; padding: 12px;">${query ? 'No matching archived tasks.' : 'No archived tasks.'}</div>`;
     return;
   }
   
@@ -2445,7 +2489,7 @@ function renderArchivedTasks() {
       task.updatedAt = new Date().toISOString();
       saveState();
       renderTasks();
-      renderArchivedTasks();
+      renderArchivedTasks(query);
     });
     actions.appendChild(restoreBtn);
     
@@ -2463,7 +2507,7 @@ function renderArchivedTasks() {
         state.tasks = state.tasks.filter(t => t.id !== task.id);
         saveState();
         renderTasks();
-        renderArchivedTasks();
+        renderArchivedTasks(query);
       }
     });
     actions.appendChild(deleteBtn);
@@ -2477,5 +2521,69 @@ function renderArchivedTasks() {
     window.lucide.createIcons({
       attrs: { class: 'lucide-icon' }
     });
+  }
+}
+
+// Add bulk archive buttons to quadrant headers dynamically
+function setupQuadrantHeaders() {
+  const quadrants = ['q1', 'q2', 'q3', 'q4'];
+  quadrants.forEach(q => {
+    const quadHeader = document.querySelector(`.matrix-quadrant.${q} .quadrant-header`);
+    if (quadHeader) {
+      if (quadHeader.querySelector('.btn-archive-quadrant')) return;
+      
+      const titleRow = document.createElement('div');
+      titleRow.className = 'quadrant-title-row';
+      titleRow.style.display = 'flex';
+      titleRow.style.alignItems = 'center';
+      titleRow.style.justifyContent = 'space-between';
+      titleRow.style.width = '100%';
+      
+      const title = quadHeader.querySelector('.quadrant-title');
+      const rule = quadHeader.querySelector('.quadrant-rule');
+      
+      if (title && rule) {
+        quadHeader.insertBefore(titleRow, rule);
+        titleRow.appendChild(title);
+        
+        const archiveBtn = document.createElement('button');
+        archiveBtn.className = 'btn btn-icon btn-archive-quadrant';
+        archiveBtn.title = 'Archive all completed tasks in this quadrant';
+        archiveBtn.innerHTML = '<i data-lucide="archive"></i>';
+        archiveBtn.style.padding = '4px';
+        archiveBtn.style.background = 'none';
+        archiveBtn.style.border = 'none';
+        archiveBtn.style.color = 'var(--text-muted)';
+        archiveBtn.style.cursor = 'pointer';
+        archiveBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          archiveCompletedInQuadrant(q);
+        });
+        
+        titleRow.appendChild(archiveBtn);
+      }
+    }
+  });
+}
+
+// Archive all completed tasks in a single quadrant
+function archiveCompletedInQuadrant(quad) {
+  const completed = state.tasks.filter(t => t.quadrant === quad && t.status === 'completed');
+  if (completed.length === 0) {
+    alert("No completed tasks to archive in this quadrant.");
+    return;
+  }
+  
+  completed.forEach(task => {
+    task.status = 'archived';
+    task.updatedAt = new Date().toISOString();
+  });
+  
+  saveState();
+  renderTasks();
+  
+  const archiveOverlay = document.getElementById('archive-modal-overlay');
+  if (archiveOverlay && !archiveOverlay.classList.contains('hidden')) {
+    renderArchivedTasks();
   }
 }

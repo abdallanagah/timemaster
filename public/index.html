@@ -502,13 +502,15 @@
 
   <!-- Archived Tasks Overlay Modal -->
   <div id="archive-modal-overlay" class="customizer-overlay hidden">
-    <div class="customizer-modal" style="max-width: 600px;">
+    <div class="customizer-modal">
       <div class="customizer-header">
         <h2><i data-lucide="archive"></i> Archived Tasks</h2>
         <button class="customizer-close-btn" id="archive-modal-close-btn">&times;</button>
       </div>
-      <div class="customizer-body" style="grid-template-columns: 1fr; max-height: 60vh;">
-        <div class="customizer-row-list" id="archived-tasks-list">
+      <div class="customizer-body" style="display: flex; flex-direction: column;">
+        <input type="text" id="archive-search-input" placeholder="Search archived tasks..." class="customizer-input" style="margin-bottom: 12px; font-size: 0.8rem; width: 100%;">
+        <button id="archive-clear-all-btn" class="btn btn-secondary btn-del-all" style="width: 100%; margin-bottom: 15px; font-size: 0.75rem; color: #f43f5e;"><i data-lucide="trash-2"></i> Delete All Archived Tasks</button>
+        <div class="customizer-row-list" id="archived-tasks-list" style="flex: 1; overflow-y: auto;">
           <!-- Dynamically populated archived tasks -->
         </div>
       </div>

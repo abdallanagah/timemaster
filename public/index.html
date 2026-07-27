@@ -243,6 +243,10 @@
           <img src="" id="user-avatar" class="user-avatar hidden" alt="Avatar">
           <div id="user-avatar-placeholder" class="user-avatar-placeholder"><i data-lucide="user"></i></div>
           <span id="user-display-name" class="user-name">Guest</span>
+          <button id="toggle-archive-btn" class="btn btn-icon" title="Archived Tasks" style="margin-right: 8px;">
+            <i data-lucide="archive"></i>
+            <span>Archive</span>
+          </button>
           <button id="logout-btn" class="btn btn-icon btn-logout" title="Sign Out">
             <i data-lucide="log-out"></i>
           </button>
@@ -453,6 +457,21 @@
       </section>
 
     </main>
+  </div>
+
+  <!-- Archived Tasks Overlay Modal -->
+  <div id="archive-modal-overlay" class="customizer-overlay hidden">
+    <div class="customizer-modal" style="max-width: 600px;">
+      <div class="customizer-header">
+        <h2><i data-lucide="archive"></i> Archived Tasks</h2>
+        <button class="customizer-close-btn" id="archive-modal-close-btn">&times;</button>
+      </div>
+      <div class="customizer-body" style="grid-template-columns: 1fr; max-height: 60vh;">
+        <div class="customizer-row-list" id="archived-tasks-list">
+          <!-- Dynamically populated archived tasks -->
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js?v=1.2.5"></script>

@@ -243,7 +243,7 @@ function validateStateSchema(state) {
     if (typeof task.id !== 'string' || !task.id) return false;
     if (typeof task.text !== 'string' || task.text.length > 500) return false;
     if (!['inbox', 'q1', 'q2', 'q3', 'q4'].includes(task.quadrant)) return false;
-    if (!['active', 'completed'].includes(task.status)) return false;
+    if (!['active', 'completed', 'archived'].includes(task.status)) return false;
     if (!['general', 'weapon', 'value', 'superpower'].includes(task.type)) return false;
     
     // Date schema compliance checks

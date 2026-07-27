@@ -119,6 +119,16 @@ async function initApp() {
   closeInfoBtn.addEventListener('click', () => infoOverlay.classList.add('hidden'));
   setupManualTabs();
 
+  // Archive Modal Handlers
+  const btnToggleArchive = document.getElementById('toggle-archive-btn');
+  const btnCloseArchive = document.getElementById('archive-modal-close-btn');
+  if (btnToggleArchive) {
+    btnToggleArchive.addEventListener('click', toggleArchiveModal);
+  }
+  if (btnCloseArchive) {
+    btnCloseArchive.addEventListener('click', toggleArchiveModal);
+  }
+
   // Start polling loops
   syncInterval = setInterval(pollState, 3000);
   q1TimerInterval = setInterval(updateTimersAndAutomations, 1000);
@@ -1731,6 +1741,22 @@ function createTaskDOMElement(task) {
     actionsRow.appendChild(subSelect);
   }
 
+  // Archive button (conditional on task status completed)
+  if (task.status === 'completed') {
+    const archiveBtn = document.createElement('button');
+    archiveBtn.className = 'btn-archive-task';
+    archiveBtn.style.background = 'none';
+    archiveBtn.style.border = 'none';
+    archiveBtn.style.color = 'var(--accent)';
+    archiveBtn.style.cursor = 'pointer';
+    archiveBtn.style.padding = '4px';
+    archiveBtn.style.marginRight = '8px';
+    archiveBtn.title = 'Archive Task';
+    archiveBtn.innerHTML = '<i data-lucide="archive"></i>';
+    archiveBtn.addEventListener('click', () => archiveTask(task.id));
+    actionsRow.appendChild(archiveBtn);
+  }
+
   // Delete
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'btn-delete-task';
@@ -2269,4 +2295,138 @@ function completeSuperpowerRecharge() {
   saveState();
   renderSuperpowers();
   updateEnergyUI();
+}
+
+// Toggle Archive overlay drawer modal
+function toggleArchiveModal() {
+  const archiveOverlay = document.getElementById('archive-modal-overlay');
+  if (!archiveOverlay) return;
+  
+  const isHidden = archiveOverlay.classList.contains('hidden');
+  if (isHidden) {
+    renderArchivedTasks();
+    archiveOverlay.classList.remove('hidden');
+  } else {
+    archiveOverlay.classList.add('hidden');
+  }
+}
+
+// Archive completed task
+function archiveTask(id) {
+  const task = state.tasks.find(t => t.id === id);
+  if (task) {
+    task.status = 'archived';
+    task.updatedAt = new Date().toISOString();
+    saveState();
+    renderTasks();
+    
+    const archiveOverlay = document.getElementById('archive-modal-overlay');
+    if (archiveOverlay && !archiveOverlay.classList.contains('hidden')) {
+      renderArchivedTasks();
+    }
+  }
+}
+
+// Render list of archived tasks inside overlay modal body
+function renderArchivedTasks() {
+  const archivedList = document.getElementById('archived-tasks-list');
+  if (!archivedList) return;
+  
+  archivedList.innerHTML = '';
+  const archivedTasks = state.tasks.filter(t => t.status === 'archived');
+  
+  if (archivedTasks.length === 0) {
+    archivedList.innerHTML = '<div class="text-muted font-mono" style="text-align: center; font-size: 0.8rem; padding: 12px;">No archived tasks.</div>';
+    return;
+  }
+  
+  archivedTasks.forEach(task => {
+    const card = document.createElement('div');
+    card.className = 'customizer-item-card';
+    card.style.display = 'flex';
+    card.style.alignItems = 'center';
+    card.style.justifyContent = 'space-between';
+    card.style.padding = '10px 14px';
+    card.style.background = 'rgba(15, 23, 42, 0.35)';
+    card.style.border = '1px solid rgba(255, 255, 255, 0.04)';
+    card.style.borderRadius = '10px';
+    card.style.marginBottom = '8px';
+    
+    const info = document.createElement('div');
+    info.style.display = 'flex';
+    info.style.flexDirection = 'column';
+    info.style.gap = '4px';
+    
+    const name = document.createElement('span');
+    name.style.fontSize = '0.85rem';
+    name.style.fontWeight = '500';
+    name.style.color = '#f8fafc';
+    name.style.textDecoration = 'line-through';
+    name.textContent = task.text;
+    info.appendChild(name);
+    
+    const quad = document.createElement('span');
+    quad.style.fontSize = '0.7rem';
+    quad.style.color = '#94a3b8';
+    quad.style.textTransform = 'uppercase';
+    quad.style.letterSpacing = '0.05em';
+    
+    let quadName = task.quadrant;
+    if (task.quadrant === 'q1') quadName = 'Q1 (Firefight)';
+    else if (task.quadrant === 'q2') quadName = 'Q2 (Values)';
+    else if (task.quadrant === 'q3') quadName = 'Q3 (Delegate)';
+    else if (task.quadrant === 'q4') quadName = 'Q4 (Void)';
+    else if (task.quadrant === 'inbox') quadName = 'Inbox';
+    
+    quad.textContent = `From ${quadName}`;
+    info.appendChild(quad);
+    
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '8px';
+    
+    // Restore button
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'btn btn-secondary';
+    restoreBtn.style.padding = '4px 8px';
+    restoreBtn.style.fontSize = '0.75rem';
+    restoreBtn.innerHTML = '<i data-lucide="rotate-ccw"></i> Restore';
+    restoreBtn.addEventListener('click', () => {
+      task.status = 'completed'; // Revert back to completed
+      task.updatedAt = new Date().toISOString();
+      saveState();
+      renderTasks();
+      renderArchivedTasks();
+    });
+    actions.appendChild(restoreBtn);
+    
+    // Delete Permanently button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'customizer-btn-del';
+    deleteBtn.style.width = '28px';
+    deleteBtn.style.height = '28px';
+    deleteBtn.style.display = 'flex';
+    deleteBtn.style.alignItems = 'center';
+    deleteBtn.style.justifyContent = 'center';
+    deleteBtn.innerHTML = '<i data-lucide="trash-2"></i>';
+    deleteBtn.addEventListener('click', () => {
+      if (confirm(`Are you sure you want to permanently delete "${task.text}"?`)) {
+        state.tasks = state.tasks.filter(t => t.id !== task.id);
+        saveState();
+        renderTasks();
+        renderArchivedTasks();
+      }
+    });
+    actions.appendChild(deleteBtn);
+    
+    card.appendChild(info);
+    card.appendChild(actions);
+    archivedList.appendChild(card);
+  });
+  
+  if (window.lucide) {
+    window.lucide.createIcons({
+      attrs: { class: 'lucide-icon' }
+    });
+  }
 }

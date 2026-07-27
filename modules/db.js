@@ -31,8 +31,162 @@ function getDefaultUserState() {
   };
 }
 
+const path = require('path');
+const os = require('os');
+const { execSync } = require('child_process');
+const https = require('https');
+
+let inMemoryDb = null;
+const isRedisEnabled = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+
+function fetchFromRedisSync() {
+  const url = process.env.UPSTASH_REDIS_REST_URL + '/get/timemaster_db';
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  
+  const tmpFile = path.join(os.tmpdir(), `timemaster_redis_sync_${Date.now()}.js`);
+  const scriptContent = `
+    const https = require('https');
+    const options = {
+      headers: { 'Authorization': 'Bearer ' + ${JSON.stringify(token)} }
+    };
+    https.get(${JSON.stringify(url)}, options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        process.stdout.write(data);
+      });
+    }).on('error', (err) => {
+      process.exit(1);
+    });
+  `;
+  
+  try {
+    fs.writeFileSync(tmpFile, scriptContent, 'utf8');
+    const res = execSync(`node "${tmpFile}"`, { encoding: 'utf8' });
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    
+    const parsed = JSON.parse(res);
+    if (parsed && parsed.result) {
+      return JSON.parse(parsed.result);
+    }
+  } catch (err) {
+    console.error("Failed to fetch database state from Redis synchronously:", err);
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+  }
+  return null;
+}
+
+function writeToRedisSync(db) {
+  const url = process.env.UPSTASH_REDIS_REST_URL + '/set/timemaster_db';
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const payload = JSON.stringify(db);
+  
+  const tmpFile = path.join(os.tmpdir(), `timemaster_redis_write_${Date.now()}.js`);
+  const scriptContent = `
+    const https = require('https');
+    const parsedUrl = new URL(${JSON.stringify(url)});
+    const payload = ${JSON.stringify(payload)};
+    
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: 443,
+      path: parsedUrl.pathname,
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + ${JSON.stringify(token)},
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    };
+    
+    const req = https.request(options, (res) => {
+      res.on('data', () => {});
+      res.on('end', () => process.exit(0));
+    });
+    
+    req.on('error', () => process.exit(1));
+    req.write(payload);
+    req.end();
+  `;
+  
+  try {
+    fs.writeFileSync(tmpFile, scriptContent, 'utf8');
+    execSync(`node "${tmpFile}"`);
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    return true;
+  } catch (err) {
+    console.error("Failed to write database state to Redis synchronously:", err);
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
+    return false;
+  }
+}
+
+function writeToRedisAsync(db) {
+  const url = process.env.UPSTASH_REDIS_REST_URL + '/set/timemaster_db';
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  
+  const payload = JSON.stringify(db);
+  const parsedUrl = new URL(url);
+  const options = {
+    hostname: parsedUrl.hostname,
+    port: 443,
+    path: parsedUrl.pathname,
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(payload)
+    }
+  };
+
+  const req = https.request(options, (res) => {
+    res.on('data', () => {});
+    res.on('end', () => {});
+  });
+
+  req.on('error', (err) => {
+    console.error("Failed to write database state to Redis asynchronously:", err);
+  });
+
+  req.write(payload);
+  req.end();
+}
+
 // Helper to read DB
 function readDb() {
+  if (isRedisEnabled) {
+    if (inMemoryDb) return inMemoryDb;
+    
+    // First load
+    const fetched = fetchFromRedisSync();
+    if (fetched) {
+      inMemoryDb = fetched;
+      return inMemoryDb;
+    }
+    
+    // Not initialized on Redis yet
+    const defaultPassword = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? crypto.randomBytes(24).toString('hex') : '2000');
+    const salt1 = crypto.randomBytes(16).toString('hex');
+    const hash1 = crypto.scryptSync(defaultPassword, salt1, 64).toString('hex');
+    const salt2 = crypto.randomBytes(16).toString('hex');
+    const hash2 = crypto.scryptSync(defaultPassword, salt2, 64).toString('hex');
+
+    inMemoryDb = { 
+      users: { 
+        default: {
+          password: `${salt1}:${hash1}`,
+          state: getDefaultUserState()
+        },
+        abdalla: {
+          password: `${salt2}:${hash2}`,
+          state: getDefaultUserState()
+        }
+      } 
+    };
+    writeToRedisSync(inMemoryDb);
+    return inMemoryDb;
+  }
+
   try {
     if (!fs.existsSync(config.DB_PATH)) {
       // Prevent static seed account vulnerability in production by using environment settings or randomizing
@@ -98,6 +252,12 @@ function readDb() {
 
 // Helper to write DB atomically using temporary replacement files
 function writeDb(db) {
+  if (isRedisEnabled) {
+    inMemoryDb = db;
+    writeToRedisAsync(db);
+    return true;
+  }
+
   const tempPath = config.DB_PATH + '.tmp';
   try {
     fs.writeFileSync(tempPath, JSON.stringify(db, null, 2), 'utf8');

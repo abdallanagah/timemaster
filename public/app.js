@@ -1071,7 +1071,7 @@ function updateEnergyUI() {
 // Update Executive KPIs
 function updateKpis() {
   const total = state.tasks.length;
-  const completed = state.tasks.filter(t => t.status === 'completed').length;
+  const completed = state.tasks.filter(t => t.status === 'completed' || t.status === 'archived').length;
   const q1Count = state.tasks.filter(t => t.quadrant === 'q1' && t.status === 'active').length;
 
   // Set Tasks Complete number
@@ -1999,10 +1999,33 @@ function renderWeapons() {
     btn.className = 'btn btn-secondary btn-activate';
     
     if (weapon.active) {
-      const typeLabel = (key === 'deepFocus' && weapon.sessionType === 'break') ? 'Break Active' : 'Active';
-      btn.textContent = typeLabel;
-      btn.className = 'btn btn-primary btn-activate';
-      btn.disabled = true;
+      const activeContainer = document.createElement('div');
+      activeContainer.style.display = 'flex';
+      activeContainer.style.flexDirection = 'column';
+      activeContainer.style.alignItems = 'flex-end';
+      activeContainer.style.gap = '4px';
+
+      const timerSpan = document.createElement('span');
+      timerSpan.className = 'weapon-countdown-sidebar font-mono';
+      timerSpan.id = `sidebar-countdown-${key}`;
+      timerSpan.style.fontSize = '0.85rem';
+      timerSpan.style.fontWeight = 'bold';
+      timerSpan.style.color = (key === 'deepFocus' && weapon.sessionType === 'break') ? 'var(--success)' : 'var(--primary)';
+      timerSpan.textContent = '--:--';
+      activeContainer.appendChild(timerSpan);
+
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'btn btn-primary btn-activate';
+      stopBtn.style.background = '#f43f5e';
+      stopBtn.style.borderColor = '#f43f5e';
+      stopBtn.style.padding = '4px 10px';
+      stopBtn.style.fontSize = '0.7rem';
+      stopBtn.textContent = 'Stop';
+      stopBtn.addEventListener('click', () => {
+        deactivateActiveWeapon();
+      });
+      activeContainer.appendChild(stopBtn);
+      action.appendChild(activeContainer);
     } else {
       btn.textContent = 'Reclaim';
       const isAnyWeaponActive = Object.values(state.weapons).some(w => w.active);
@@ -2010,9 +2033,8 @@ function renderWeapons() {
         btn.disabled = true;
       }
       btn.addEventListener('click', () => activateWeapon(key));
+      action.appendChild(btn);
     }
-    
-    action.appendChild(btn);
     item.appendChild(action);
     weaponsList.appendChild(item);
   });
@@ -2116,7 +2138,14 @@ function startWeaponTimer(key) {
     } else {
       const minutes = Math.floor(diff / (1000 * 60));
       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      weaponCountdown.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      weaponCountdown.textContent = timeStr;
+
+      // Update sidebar countdown display if present
+      const sidebarCountdown = document.getElementById(`sidebar-countdown-${key}`);
+      if (sidebarCountdown) {
+        sidebarCountdown.textContent = timeStr;
+      }
 
       // Accumulate focus time consumed on the active task
       if (isFocus && sessionType === 'focus' && state.activeFocusTaskId) {
